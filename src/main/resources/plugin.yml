@@ -1,0 +1,10 @@
+name: XH
+description: $description
+version: '${version}'
+
+main: io.github.liyughj.xH.XH
+api-version: '1.21.4'
+load: POSTWORLD
+depend: [ProtocolLib]
+
+authors: [ 恪深 ]
