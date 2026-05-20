@@ -1,6 +1,7 @@
 package io.github.liyughj.xH;
 
 import io.github.liyughj.xH.enchantingTable.BookshelfListener;
+import io.github.liyughj.xH.enchantingTable.EnchantingLevelListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingTableConfig;
 import io.github.liyughj.xH.enchantingTable.EnchantingTableListener;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -16,7 +17,7 @@ public final class XH extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        /* 初始化附魔台配置 */
+        /* 初始化附魔台配置（使用 enchantingTable.yml） */
         this.enchantingTableConfig = new EnchantingTableConfig(this);
 
         /* 注册附魔台事件监听器 */
@@ -33,8 +34,16 @@ public final class XH extends JavaPlugin {
             this
         );
 
+        /* 注册附魔等级限制监听器 */
+        /* 监听附魔完成事件，强制将所有附魔等级设为 I级 */
+        getServer().getPluginManager().registerEvents(
+            new EnchantingLevelListener(),
+            this
+        );
+
         getLogger().info("XH插件已启用！");
         getLogger().info("满级附魔台所需书架数量：" + enchantingTableConfig.getRequiredBookshelves());
+        getLogger().info("附魔等级限制：强制 I级");
     }
 
     @Override
