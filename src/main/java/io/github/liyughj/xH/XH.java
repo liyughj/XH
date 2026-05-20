@@ -1,6 +1,7 @@
 package io.github.liyughj.xH;
 
 import io.github.liyughj.xH.enchantingTable.BookshelfListener;
+import io.github.liyughj.xH.enchantingTable.EnchantingItemListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingLevelListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingTableConfig;
 import io.github.liyughj.xH.enchantingTable.EnchantingTableListener;
@@ -41,9 +42,17 @@ public final class XH extends JavaPlugin {
             this
         );
 
+        /* 注册附魔物品限制监听器 */
+        /* 监听物品放入附魔台事件，限制只有普通书才能显示附魔选项 */
+        getServer().getPluginManager().registerEvents(
+            new EnchantingItemListener(),
+            this
+        );
+
         getLogger().info("XH插件已启用！");
         getLogger().info("满级附魔台所需书架数量：" + enchantingTableConfig.getRequiredBookshelves());
         getLogger().info("附魔等级限制：强制 I级");
+        getLogger().info("附魔物品限制：仅普通书可附魔");
     }
 
     @Override
