@@ -1,5 +1,7 @@
 package io.github.liyughj.xH;
 
+import io.github.liyughj.xH.anvil.AnvilConfig;
+import io.github.liyughj.xH.anvil.AnvilListener;
 import io.github.liyughj.xH.enchantingTable.BookshelfListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingItemListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingLevelListener;
@@ -15,6 +17,9 @@ public final class XH extends JavaPlugin {
 
     /* 附魔台配置管理器 */
     private EnchantingTableConfig enchantingTableConfig;
+
+    /* 铁砧配置管理器 */
+    private AnvilConfig anvilConfig;
 
     @Override
     public void onEnable() {
@@ -49,10 +54,21 @@ public final class XH extends JavaPlugin {
             this
         );
 
+        /* 初始化铁砧配置（使用 anvil.yml） */
+        this.anvilConfig = new AnvilConfig(this);
+
+        /* 注册铁砧经验限制监听器 */
+        /* 监听铁砧准备事件，强制经验成本为固定值 */
+        getServer().getPluginManager().registerEvents(
+            new AnvilListener(anvilConfig),
+            this
+        );
+
         getLogger().info("XH插件已启用！");
         getLogger().info("满级附魔台所需书架数量：" + enchantingTableConfig.getRequiredBookshelves());
         getLogger().info("附魔等级限制：强制 I级");
         getLogger().info("附魔物品限制：仅普通书可附魔");
+        getLogger().info("铁砧经验成本：固定 " + anvilConfig.getFixedExpCost() + " 级");
     }
 
     @Override
@@ -67,5 +83,14 @@ public final class XH extends JavaPlugin {
      */
     public EnchantingTableConfig getEnchantingTableConfig() {
         return enchantingTableConfig;
+    }
+
+    /**
+     * 获取铁砧配置管理器
+     *
+     * @return 配置管理器实例
+     */
+    public AnvilConfig getAnvilConfig() {
+        return anvilConfig;
     }
 }
