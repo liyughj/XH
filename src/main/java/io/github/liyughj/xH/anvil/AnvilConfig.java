@@ -15,18 +15,23 @@ import java.util.List;
 public class AnvilConfig {
 
     /* 默认铁砧固定经验成本 */
-    private static final int DEFAULT_FIXED_EXP_COST = 60;
+    private static final int DEFAULT_FIXED_EXP_COST = 30;
+
+    /* 默认最大修复成本（用于修复"过于昂贵"显示） */
+    private static final int DEFAULT_MAX_REPAIR_COST = 30;
 
     /* 配置文件名 */
     private static final String CONFIG_FILE_NAME = "anvil.yml";
 
     /* 配置键名 */
-    private static final String CONFIG_KEY = "fixed-exp-cost";
+    private static final String CONFIG_KEY_FIXED_EXP = "fixed-exp-cost";
+    private static final String CONFIG_KEY_MAX_REPAIR = "max-repair-cost";
 
     private final JavaPlugin plugin;
     private FileConfiguration config;
     private File configFile;
     private int fixedExpCost;
+    private int maxRepairCost;
 
     /**
      * 构造函数
@@ -53,13 +58,21 @@ public class AnvilConfig {
         this.config = YamlConfiguration.loadConfiguration(configFile);
 
         /* 读取配置值 */
-        this.fixedExpCost = config.getInt(CONFIG_KEY, DEFAULT_FIXED_EXP_COST);
+        this.fixedExpCost = config.getInt(CONFIG_KEY_FIXED_EXP, DEFAULT_FIXED_EXP_COST);
+        this.maxRepairCost = config.getInt(CONFIG_KEY_MAX_REPAIR, DEFAULT_MAX_REPAIR_COST);
 
         /* 验证配置值有效性 */
         if (fixedExpCost < 0 || fixedExpCost > 1000) {
-            plugin.getLogger().warning("配置文件 " + CONFIG_FILE_NAME + " 中的 " + CONFIG_KEY +
+            plugin.getLogger().warning("配置文件 " + CONFIG_FILE_NAME + " 中的 " + CONFIG_KEY_FIXED_EXP +
                 " 值无效: " + fixedExpCost + "，使用默认值: " + DEFAULT_FIXED_EXP_COST);
             this.fixedExpCost = DEFAULT_FIXED_EXP_COST;
+        }
+
+        /* 验证最大修复成本有效性 */
+        if (maxRepairCost < 0 || maxRepairCost > 1000) {
+            plugin.getLogger().warning("配置文件 " + CONFIG_FILE_NAME + " 中的 " + CONFIG_KEY_MAX_REPAIR +
+                " 值无效: " + maxRepairCost + "，使用默认值: " + DEFAULT_MAX_REPAIR_COST);
+            this.maxRepairCost = DEFAULT_MAX_REPAIR_COST;
         }
     }
 
@@ -74,13 +87,15 @@ public class AnvilConfig {
 
         /* 创建默认配置 */
         YamlConfiguration defaultConfig = new YamlConfiguration();
-        defaultConfig.set(CONFIG_KEY, DEFAULT_FIXED_EXP_COST);
+        defaultConfig.set(CONFIG_KEY_FIXED_EXP, DEFAULT_FIXED_EXP_COST);
+        defaultConfig.set(CONFIG_KEY_MAX_REPAIR, DEFAULT_MAX_REPAIR_COST);
 
         /* 添加注释 - 使用新的API避免弃用警告 */
         List<String> headerLines = Arrays.asList(
             "铁砧经验限制配置文件",
-            "fixed-exp-cost: 铁砧固定经验成本（默认60）",
-            "无论何种操作（修复/重命名/合并附魔），经验成本始终为此值"
+            "fixed-exp-cost: 铁砧固定经验成本（默认30）",
+            "max-repair-cost: 最大修复成本（默认30）",
+            "无论何种操作（修复/重命名/合并附魔），经验成本始终为 fixed-exp-cost"
         );
         defaultConfig.options().setHeader(headerLines);
 
@@ -108,6 +123,16 @@ public class AnvilConfig {
      */
     public int getFixedExpCost() {
         return fixedExpCost;
+    }
+
+    /**
+     * 获取最大修复成本
+     * 用于 ProtocolLib 修复"过于昂贵"显示问题
+     *
+     * @return 最大修复成本
+     */
+    public int getMaxRepairCost() {
+        return maxRepairCost;
     }
 
     /**

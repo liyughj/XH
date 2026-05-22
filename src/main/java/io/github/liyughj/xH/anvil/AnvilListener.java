@@ -8,7 +8,7 @@ import org.bukkit.inventory.view.AnvilView;
 
 /**
  * 铁砧经验限制监听器
- * 监听铁砧准备事件，强制铁砧使用经验为固定值（60级）
+ * 监听铁砧准备事件，强制铁砧使用经验为固定值（默认30级）
  */
 public class AnvilListener implements Listener {
 
@@ -39,7 +39,7 @@ public class AnvilListener implements Listener {
 
         /* 只有存在有效操作时才修改（避免干扰空铁砧） */
         if (originalCost > 0) {
-            /* 从配置获取固定经验成本，默认60级 */
+            /* 从配置获取固定经验成本，默认30级 */
             int fixedCost = anvilConfig.getFixedExpCost();
 
             /* 无论原成本是多少，强制设为配置值 */
@@ -47,6 +47,7 @@ public class AnvilListener implements Listener {
 
             /* 注意：此处不发送任何提示消息给玩家，静默处理 */
             /* setRepairCost 会同时修改界面显示和实际消耗的经验 */
+            /* 30级低于40级限制，不会显示"过于昂贵" */
         }
     }
 }
