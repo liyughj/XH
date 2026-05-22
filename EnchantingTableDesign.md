@@ -1,42 +1,55 @@
-# 满级附魔台机制设计文档
+# XH 插件设计文档
 
-## 一、思维导图
+## 一、功能概述
 
-### 1.1 满级附魔台机制
+XH 插件是一个 Minecraft 服务器插件，主要提供以下功能：
+
+1. **满级附魔台限制** - 只有达到指定书架数量的附魔台才能使用
+2. **附魔等级限制** - 强制所有附魔等级为 I级（1级）
+3. **附魔物品限制** - 只有普通书（BOOK）才能进行附魔
+4. **铁砧经验限制** - 固定铁砧经验成本为指定等级（默认30级）
+
+---
+
+## 二、思维导图
+
+### 2.1 满级附魔台机制
 
 ```
 满级附魔台机制
 │
 ├── 1. 核心功能
 │   ├── 检测附魔台周围书架数量
-│   ├── 判断是否达到满级标准（15个书架）
-│   ├── 非满级附魔台禁止附魔操作
+│   ├── 判断是否达到满级标准（默认15个书架，可配置）
+│   ├── 非满级附魔台禁止打开附魔界面
 │   └── 满级附魔台正常进行附魔
 │
 ├── 2. 检测机制
 │   ├── 触发时机
-│   │   ├── 玩家打开附魔台界面时
-│   │   └── 书架被放置/破坏时（附近附魔台重新检测）
+│   │   └── 玩家打开附魔台界面时
 │   └── 检测范围
-│       └── 以附魔台为中心的15x15x15区域（原版标准）
+│       └── 以附魔台为中心的15x15区域（原版标准）
+│           Y轴检测当前层和上一层
 │
 ├── 3. 阻止机制
 │   ├── 打开界面时检测
-│   │   ├── 非满级 → 静默阻止打开（无任何反应，如同原版）
+│   │   ├── 非满级 → 静默阻止打开（无任何反应）
 │   │   └── 满级 → 正常打开附魔界面
-│   └── 附魔操作时二次验证
-│       └── 防止绕过检测的情况
+│   └── 位置获取优化
+│       ├── 优先从 InventoryHolder 获取
+│       └── 备用方案：搜索玩家附近3格范围内的附魔台
+│           只返回在合理交互距离内（6格）的附魔台
 │
 ├── 4. 配置系统
-│   └── 满级所需书架数量（默认15，可配置）
+│   └── 满级所需书架数量（默认15，可配置1-30）
 │
-└── 5. 性能优化
-    ├── 书架变动时只检测附近附魔台
-    ├── 使用缓存避免重复计算
-    └── 异步检测避免阻塞主线程
+└── 5. 书架监控
+    ├── 监听书架放置事件
+    ├── 监听书架破坏事件
+    └── 触发附近附魔台的重新检测（用于未来缓存扩展）
 ```
 
-### 1.2 附魔等级限制机制（新增）
+### 2.2 附魔等级限制机制
 
 ```
 附魔等级限制机制
@@ -67,7 +80,7 @@
     └── 强制附魔等级（固定为 I级，不可配置）
 ```
 
-### 1.3 附魔物品限制机制（新增）
+### 2.3 附魔物品限制机制
 
 ```
 附魔物品限制机制
@@ -79,14 +92,23 @@
 │   └── 其他物品不显示任何附魔选项
 │
 ├── 2. 触发时机
-│   └── 玩家将物品放入附魔位置时
-│       └── PrepareItemEnchantEvent 事件触发
+│   ├── 玩家将物品放入附魔位置时
+│   │   └── PrepareItemEnchantEvent 事件触发
+│   └── 玩家完成附魔时（二次检查）
+│       └── EnchantItemEvent 事件触发
 │
-├── 3. 物品判断机制
-│   ├── 获取附魔位置的物品
-│   ├── 判断物品类型是否为 BOOK（普通书）
-│   ├── 是普通书 → 正常显示附魔选项
-│   └── 非普通书 → 设置附魔等级为0，不显示选项
+├── 3. 双重验证机制
+│   ├── 第一层：PrepareItemEnchantEvent
+│   │   ├── 获取附魔位置的物品
+│   │   ├── 判断物品类型是否为 BOOK（普通书）
+│   │   ├── 是普通书 → 正常显示附魔选项
+│   │   └── 非普通书 → 将所有附魔选项设为null
+│   │
+│   └── 第二层：EnchantItemEvent（二次检查）
+│       ├── 获取被附魔的物品
+│       ├── 判断物品类型是否为 BOOK
+│       ├── 是普通书 → 正常完成附魔
+│       └── 非普通书 → 取消附魔事件，清除所有附魔
 │
 ├── 4. 处理细节
 │   ├── 物品可以放入附魔位置（不阻止）
@@ -98,127 +120,108 @@
     └── 不发送任何提示消息给玩家
 ```
 
-### 1.4 铁砧经验限制机制（新增）
+### 2.4 铁砧经验限制机制
 
 ```
 铁砧经验限制机制
 │
 ├── 1. 核心功能
 │   ├── 监听铁砧准备事件
+│   ├── 监听铁砧点击事件（双重保障）
 │   ├── 获取当前计算的经验成本
-│   ├── 将经验成本强制设为固定值（30级）
-│   └── 无论何种操作，经验成本始终为30级
+│   ├── 将经验成本强制设为固定值（默认30级，可配置）
+│   └── 无论何种操作，经验成本始终为固定值
 │
-├── 2. 触发时机
-│   └── 玩家将物品放入铁砧时
-│       └── PrepareAnvilEvent 事件触发
+├── 2. 双重保障机制
+│   ├── 第一层：PrepareAnvilEvent
+│   │   ├── 玩家将物品放入铁砧时触发
+│   │   ├── 获取当前修复成本
+│   │   ├── 只有存在有效操作时才修改（originalCost > 0）
+│   │   └── 强制设置修复成本为配置值
+│   │
+│   └── 第二层：InventoryClickEvent
+│       ├── 玩家点击铁砧结果槽位时触发
+│       ├── 确保点击的是结果槽位（slot 2）
+│       ├── 获取当前修复成本
+│       ├── 如果成本不是固定值，则重新设置
+│       └── 防止服务器后续计算覆盖设置的成本
 │
 ├── 3. 经验修改机制
-│   ├── 获取当前修复成本
-│   ├── 无论原成本是多少
-│   ├── 强制设置修复成本为60
-│   └── 应用到铁砧界面
+│   ├── 使用 AnvilView 的新API（替代过时的 AnvilInventory）
+│   ├── 获取当前修复成本 getRepairCost()
+│   ├── 强制设置修复成本 setRepairCost(fixedCost)
+│   └── 应用到铁砧界面和实际经验消耗
 │
 ├── 4. 处理细节
 │   ├── 支持所有铁砧操作（修复/重命名/合并附魔）
 │   ├── 无论放入什么物品组合
-│   ├── 经验成本始终固定为60级
+│   ├── 经验成本始终固定
 │   └── 不阻止操作，只修改经验成本
 │
-├── 5. 静默处理
-│   └── 不发送任何提示消息给玩家
+├── 5. ProtocolLib 修复
+│   ├── 使用 ProtocolLib 监听 WINDOW_DATA 数据包
+│   ├── 修改 Property ID=0（最大经验成本）
+│   ├── 防止显示"过于昂贵"
+│   └── 优雅降级：ProtocolLib 不存在时禁用此功能
 │
-├── 6. 配置项
-    └── 固定经验成本（默认30，可配置）
+└── 6. 配置项
+    ├── 固定经验成本（默认30，可配置0-1000）
+    └── 最大修复成本（默认30，用于数据包修复）
 ```
 
-### 1.5 铁砧经验限制说明（更新）
+---
+
+## 三、系统架构
+
+### 3.1 类结构图
 
 ```
-铁砧经验限制说明
-│
-├── 1. 设计思路
-│   ├── 将铁砧经验成本固定为30级
-│   ├── 30级低于Minecraft原版的40级限制
-│   └── 因此不会显示"过于昂贵"，无需额外修复
-│
-├── 2. 优势
-│   ├── 无需使用 ProtocolLib 修复显示问题
-│   ├── 代码更简单，兼容性更好
-│   ├── 玩家可以正常使用铁砧
-│   └── 经验成本固定，易于理解
-│
-├── 3. 注意事项
-│   ├── 如果将来需要将经验成本提高到40级以上
-│   ├── 则需要使用 ProtocolLib 修复"过于昂贵"显示
-│   └── 当前版本保持30级，避免此问题
-│
-└── 4. 配置项
-    └── 固定经验成本（默认30，可配置，建议不超过39）
-```
-
-## 二、系统架构
-
-### 2.1 类结构图
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         XH (主类)                            │
-│                    插件入口，管理生命周期                       │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-        ┌────────────┼────────────┬────────────────┬────────────┐
-        │            │            │                │            │
-        ▼            ▼            ▼                ▼            ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-│ Enchanting   │ │ Bookshelf    │ │ Enchanting   │ │ Enchanting   │ │ Anvil        │
-│ Table        │ │ Listener     │ │ Level        │ │ Item         │ │ Listener     │
-│ Listener     │ │              │ │ Listener     │ │ Listener     │ │              │
-│              │ │ 监听书架放置   │ │              │ │              │ │ 监听铁砧事件   │
-│ 监听附魔台交互 │ │ 和破坏事件    │ │ 监听附魔完成   │ │ 监听物品放入   │ │ 固定经验为60   │
-│ 阻止非满级打开 │ │              │ │ 强制等级为I级  │ │ 限制普通书    │ │              │
-└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
-        │            │            │                │                │
-        │            │            │                │                │
-        │            │            │                │                ▼
-        │            │            │                │       ┌──────────────┐
-        │            │            │                │       │ AnvilPacket  │
-        │            │            │                │       │ Listener     │
-        │            │            │                │       │              │
-        │            │            │                │       │ ProtocolLib  │
-        │            │            │                │       │ 修复过于昂贵 │
-        │            │            │                │       └──────────────┘
-        │            │            │                │                │
-        └────────────┴────────────┴────────────────┴────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              XH (主类)                                       │
+│                         插件入口，管理生命周期                                │
+│                         注册事件监听器和命令                                  │
+└─────────────────────────────┬───────────────────────────────────────────────┘
                               │
-                              ▼
-                     ┌──────────────────┐
-                     │ EnchantingUtils  │
-│                    │                  │
-                     │ 书架检测工具类    │
-                     │ - 计算书架数量    │
-                     │ - 判断是否满级    │
-                     │ - 获取附近附魔台  │
-                     └──────────────────┘
+        ┌─────────────────────┼─────────────────────┬───────────────────────┐
+        │                     │                     │                       │
+        ▼                     ▼                     ▼                       ▼
+┌───────────────┐    ┌─────────────────┐    ┌───────────────┐    ┌─────────────────┐
+│  enchanting   │    │   enchanting    │    │    anvil      │    │     command     │
+│    Table      │    │     Table       │    │               │    │                 │
+│    包         │    │    Config       │    │     包        │    │   XHCommand     │
+│               │    │                 │    │               │    │                 │
+│ - Listener    │    │ - 书架数量配置   │    │ - AnvilConfig │    │ - /xh reload    │
+│ - Bookshelf   │    │ - 重载方法       │    │ - AnvilListener│   │ - /xh help      │
+│   Listener    │    │                 │    │ - AnvilPacket │    │                 │
+│ - Level       │    │                 │    │   Listener    │    │                 │
+│   Listener    │    │                 │    │               │    │                 │
+│ - Item        │    │                 │    │               │    │                 │
+│   Listener    │    │                 │    │               │    │                 │
+│ - Utils       │    │                 │    │               │    │                 │
+└───────────────┘    └─────────────────┘    └───────────────┘    └─────────────────┘
 ```
 
-### 2.2 核心类职责
+### 3.2 核心类职责
 
-| 类名 | 职责 |
-|------|------|
-| `XH` | 插件主类，注册事件监听器和命令 |
-| `EnchantingTableListener` | 监听玩家与附魔台交互事件，阻止非满级附魔 |
-| `BookshelfListener` | 监听书架放置/破坏事件，触发附近附魔台重新检测 |
-| `EnchantingLevelListener` | 监听附魔完成事件，强制附魔等级为I级 |
-| `EnchantingItemListener` | 监听物品放入附魔台事件，限制只有普通书可附魔 |
-| `AnvilListener` | **新增**：监听铁砧事件，固定经验成本为60级 |
-| `AnvilPacketListener` | **新增**：使用ProtocolLib监听数据包，修复"过于昂贵"显示问题 |
-| `EnchantingUtils` | 工具类，提供书架数量计算和满级判断方法 |
-| `EnchantingTableConfig` | 配置管理，读取和提供配置项访问 |
+| 类名 | 包路径 | 职责 |
+|------|--------|------|
+| `XH` | `io.github.liyughj.xH` | 插件主类，注册事件监听器和命令 |
+| `EnchantingTableListener` | `enchantingTable` | 监听玩家与附魔台交互，阻止非满级附魔台打开 |
+| `BookshelfListener` | `enchantingTable` | 监听书架放置/破坏事件，触发附近附魔台重新检测 |
+| `EnchantingLevelListener` | `enchantingTable` | 监听附魔完成事件，强制附魔等级为I级 |
+| `EnchantingItemListener` | `enchantingTable` | 监听物品放入附魔台和附魔完成事件，限制只有普通书可附魔 |
+| `EnchantingUtils` | `enchantingTable` | 工具类，提供书架数量计算和满级判断方法 |
+| `EnchantingTableConfig` | `enchantingTable` | 附魔台配置管理，读取和提供配置项访问 |
+| `AnvilListener` | `anvil` | 监听铁砧准备和点击事件，固定经验成本 |
+| `AnvilPacketListener` | `anvil` | 使用ProtocolLib监听数据包，修复"过于昂贵"显示问题 |
+| `AnvilConfig` | `anvil` | 铁砧配置管理，读取和提供配置项访问 |
+| `XHCommand` | `command` | 命令执行器，处理 `/xh` 命令及其子命令 |
 
-## 三、事件流程
+---
 
-### 3.1 玩家打开附魔台流程
+## 四、事件流程
+
+### 4.1 玩家打开附魔台流程
 
 ```
 ┌─────────┐     ┌──────────────────┐     ┌─────────────────┐
@@ -234,14 +237,21 @@
                                                   ▼
                                          ┌─────────────────┐
                                          │ 获取附魔台位置   │
+                                         │ - 优先从Holder   │
+                                         │ - 备用：搜索附近 │
+                                         └────────┬────────┘
+                                                  │
+                                                  ▼
+                                         ┌─────────────────┐
                                          │ 计算周围书架数量 │
+                                         │ (EnchantingUtils)│
                                          └────────┬────────┘
                                                   │
                               ┌───────────────────┴───────────────────┐
                               │                                       │
                               ▼                                       ▼
                      ┌─────────────────┐                     ┌─────────────────┐
-                     │ 书架数量 >= 15   │                     │ 书架数量 < 15    │
+                     │ 书架数量 >= 配置 │                     │ 书架数量 < 配置  │
                      │    (满级)        │                     │   (非满级)       │
                      └────────┬────────┘                     └────────┬────────┘
                               │                                       │
@@ -250,37 +260,10 @@
                      │   允许打开界面   │                     │  取消打开事件    │
                      │   正常进行附魔   │                     │  静默处理        │
                      └─────────────────┘                     │  不发送任何提示  │
-                                                              └─────────────────┘
+                                                            └─────────────────┘
 ```
 
-### 3.2 书架变动检测流程
-
-```
-┌─────────┐     ┌──────────────────┐     ┌─────────────────────────┐
-│ 放置/   │────▶│ BlockPlaceEvent  │────▶│ 判断是否为书架方块       │
-│ 破坏书架 │     │ BlockBreakEvent  │     │ (BOOKSHELF)             │
-└─────────┘     └──────────────────┘     └───────────┬─────────────┘
-                                                     │
-                                                     ▼
-                                            ┌─────────────────┐
-                                            │    是书架方块    │
-                                            └────────┬────────┘
-                                                     │
-                                                     ▼
-                                            ┌─────────────────┐
-                                            │ 搜索15格范围内   │
-                                            │ 的所有附魔台     │
-                                            └────────┬────────┘
-                                                     │
-                                                     ▼
-                                            ┌─────────────────┐
-                                            │ 对每个附魔台     │
-                                            │ 重新计算书架数量 │
-                                            │ (用于后续缓存)   │
-                                            └─────────────────┘
-```
-
-### 3.3 附魔等级限制流程（新增）
+### 4.2 附魔等级限制流程
 
 ```
 ┌─────────┐     ┌──────────────────┐     ┌─────────────────┐
@@ -290,6 +273,7 @@
                                                   │
                                                   ▼
                                          ┌─────────────────┐
+                                         │ 创建新的附魔Map  │
                                          │ 遍历所有附魔类型 │
                                          │ 将等级强制设为1  │
                                          │ (I级)           │
@@ -314,9 +298,10 @@
                                          └─────────────────┘
 ```
 
-### 3.4 附魔物品限制流程（新增）
+### 4.3 附魔物品限制流程（双重验证）
 
 ```
+第一层验证：PrepareItemEnchantEvent
 ┌─────────┐     ┌─────────────────────────┐     ┌─────────────────┐
 │ 玩家将  │────▶│ PrepareItemEnchantEvent │────▶│ 获取附魔位置    │
 │ 物品放入 │     │   (监听物品放入)         │     │ 的物品          │
@@ -340,15 +325,42 @@
                               │                                                   │
                               ▼                                                   ▼
                      ┌─────────────────┐                               ┌─────────────────┐
-                     │   正常显示       │                               │ 设置附魔等级为0  │
-                     │   附魔选项       │                               │ 不显示任何选项   │
-                     │   （原版逻辑）   │                               │ 静默处理        │
+                     │   正常显示       │                               │ 将所有附魔选项   │
+                     │   附魔选项       │                               │ 设为null        │
+                     │   （原版逻辑）   │                               │ 不显示任何选项   │
                      └─────────────────┘                               └─────────────────┘
+
+第二层验证：EnchantItemEvent（防止绕过）
+┌─────────┐     ┌──────────────────┐     ┌─────────────────┐
+│ 玩家点击 │────▶│ EnchantItemEvent │────▶│ 获取被附魔物品   │
+│ 完成附魔 │     │  (二次检查)       │     │                 │
+└─────────┘     └──────────────────┘     └────────┬────────┘
+                                                  │
+                                                  ▼
+                                         ┌─────────────────┐
+                                         │ 判断物品类型     │
+                                         │ 是否为 BOOK     │
+                                         └────────┬────────┘
+                                                  │
+                              ┌───────────────────┴───────────────────┐
+                              │                                       │
+                              ▼                                       ▼
+                     ┌─────────────────┐                     ┌─────────────────┐
+                     │ 是普通书（BOOK） │                     │ 非普通书        │
+                     │                 │                     │                 │
+                     └────────┬────────┘                     └────────┬────────┘
+                              │                                       │
+                              ▼                                       ▼
+                     ┌─────────────────┐                     ┌─────────────────┐
+                     │   正常完成附魔   │                     │ 取消附魔事件    │
+                     │                 │                     │ 清除所有附魔    │
+                     └─────────────────┘                     └─────────────────┘
 ```
 
-### 3.5 铁砧经验限制流程（新增）
+### 4.4 铁砧经验限制流程（双重保障）
 
 ```
+第一层保障：PrepareAnvilEvent
 ┌─────────┐     ┌──────────────────┐     ┌─────────────────┐
 │ 玩家将  │────▶│ PrepareAnvilEvent│────▶│ 获取当前修复成本 │
 │ 物品放入 │     │ (监听铁砧准备)    │     │                 │
@@ -357,242 +369,466 @@
                                                   │
                                                   ▼
                                          ┌─────────────────┐
-                                         │ 强制设置修复成本 │
-                                         │ 为固定值60      │
-                                         │（无论原成本多少）│
+                                         │ originalCost > 0?│
+                                         └────────┬────────┘
+                                                  │
+                              ┌───────────────────┴───────────────────┐
+                              │                                       │
+                              ▼                                       ▼
+                     ┌─────────────────┐                     ┌─────────────────┐
+                     │      是         │                     │       否        │
+                     │ 存在有效操作    │                     │ 空铁砧/无操作   │
+                     └────────┬────────┘                     └────────┬────────┘
+                              │                                       │
+                              ▼                                       ▼
+                     ┌─────────────────┐                     ┌─────────────────┐
+                     │ 强制设置修复成本 │                     │   不做任何修改   │
+                     │ 为配置值        │                     │                 │
+                     │（默认30级）     │                     │                 │
+                     └────────┬────────┘                     └─────────────────┘
+                              │
+                              ▼
+                     ┌─────────────────┐
+                     │ 更新铁砧界面     │
+                     │ 显示固定经验成本 │
+                     └─────────────────┘
+
+第二层保障：InventoryClickEvent
+┌─────────┐     ┌──────────────────┐     ┌─────────────────┐
+│ 玩家点击 │────▶│ InventoryClickEvent│───▶│ 判断是否为铁砧   │
+│ 结果槽位 │     │ (监听点击事件)    │     │ 界面            │
+└─────────┘     └──────────────────┘     └────────┬────────┘
+                                                  │
+                                                  ▼
+                                         ┌─────────────────┐
+                                         │ 判断点击的是     │
+                                         │ 结果槽位(槽位2)? │
                                          └────────┬────────┘
                                                   │
                                                   ▼
                                          ┌─────────────────┐
-                                         │ 更新铁砧界面     │
-                                         │ 显示经验成本为30 │
+                                         │ 获取当前修复成本 │
                                          └────────┬────────┘
                                                   │
                                                   ▼
                                          ┌─────────────────┐
-                                         │ 如果成本>40      │
-                                         │ 触发"过于昂贵"   │
-                                         │ 需要数据包修复   │
-                                         └─────────────────┘
-
-### 3.6 铁砧经验限制说明（更新）
-
-```
-┌─────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ 玩家将  │────▶│ PrepareAnvilEvent│────▶│ 获取当前修复成本 │
-│ 物品放入 │     │  (监听铁砧准备)  │     │                 │
-│ 铁砧    │     │                 │     │                 │
-└─────────┘     └─────────────────┘     └────────┬────────┘
-                                                  │
-                                                  ▼
-                                         ┌─────────────────┐
-                                         │ 强制设置修复成本 │
-                                         │ 为固定值30级    │
-                                         │                 │
-                                         │ 30级 < 40级限制 │
-                                         │ 不会显示"过于昂贵"│
+                                         │ currentCost !=  │
+                                         │ fixedCost ?     │
                                          └────────┬────────┘
                                                   │
-                                                  ▼
-                                         ┌─────────────────┐
-                                         │ 更新铁砧界面     │
-                                         │ 显示经验成本为30 │
-                                         │ 玩家可正常使用   │
-                                         └─────────────────┘
-```
-                                                  │
-                                                  ▼
-                                         ┌─────────────────┐
-                                         │ 玩家支付60级经验 │
-                                         │ 完成铁砧操作     │
-                                         └─────────────────┘
+                              ┌───────────────────┴───────────────────┐
+                              │                                       │
+                              ▼                                       ▼
+                     ┌─────────────────┐                     ┌─────────────────┐
+                     │      是         │                     │       否        │
+                     │ 成本被覆盖      │                     │ 成本正确        │
+                     └────────┬────────┘                     └────────┬────────┘
+                              │                                       │
+                              ▼                                       ▼
+                     ┌─────────────────┐                     ┌─────────────────┐
+                     │ 重新设置修复成本 │                     │   不做任何修改   │
+                     │ 为固定值        │                     │                 │
+                     └─────────────────┘                     └─────────────────┘
 ```
 
-## 四、关键API和实现要点
+---
 
-### 4.1 书架检测算法
+## 五、关键API和实现要点
+
+### 5.1 书架检测算法
 
 ```java
-/* 
- * 检测附魔台周围书架数量的方法
- * 使用原版附魔台的检测逻辑：以附魔台为中心，15x15x15范围内
- * 只计算与附魔台同一高度或高1格的书架
+/**
+ * 计算附魔台周围的有效书架数量
+ * 使用原版附魔台的检测逻辑
+ *
+ * @param enchantingTable 附魔台位置
+ * @return 有效书架数量（最大15）
  */
 public static int countBookshelves(Location enchantingTable) {
     int count = 0;
-    // 检测范围：X/Z方向各延伸7格，Y方向检测当前层和上一层
-    for (int dx = -7; dx <= 7; dx++) {
-        for (int dz = -7; dz <= 7; dz++) {
+    Block tableBlock = enchantingTable.getBlock();
+
+    /* 遍历以附魔台为中心的15x15区域，Y轴检测当前层和上一层 */
+    for (int dx = -CHECK_RADIUS; dx <= CHECK_RADIUS; dx++) {
+        for (int dz = -CHECK_RADIUS; dz <= CHECK_RADIUS; dz++) {
             for (int dy = 0; dy <= 1; dy++) {
                 Location checkLoc = enchantingTable.clone().add(dx, dy, dz);
-                if (checkLoc.getBlock().getType() == Material.BOOKSHELF) {
-                    // 检查书架和附魔台之间是否有阻挡
-                    if (!isBlocked(enchantingTable, checkLoc)) {
+                Block checkBlock = checkLoc.getBlock();
+
+                /* 检查是否为书架方块 */
+                if (checkBlock.getType() == Material.BOOKSHELF) {
+                    /* 检查书架和附魔台之间是否有阻挡 */
+                    if (!isBlocked(tableBlock, checkBlock)) {
                         count++;
+                        /* 原版最大有效书架数为15，超过不再计算 */
+                        if (count >= DEFAULT_REQUIRED_BOOKSHELVES) {
+                            return DEFAULT_REQUIRED_BOOKSHELVES;
+                        }
                     }
                 }
             }
         }
     }
-    return Math.min(count, 15); // 原版最大有效书架数为15
+
+    return count;
 }
 ```
 
-### 4.2 附魔等级限制算法（新增）
+### 5.2 附魔台位置获取（带距离检查）
 
 ```java
-/*
- * 强制将附魔结果的所有附魔等级设为 I级（1级）
- * 在 EnchantItemEvent 事件中调用
+/**
+ * 查找玩家附近的附魔台
+ * 只在合理范围内搜索（玩家与附魔台交互的最大距离为6格）
+ *
+ * @param location 玩家位置
+ * @return 最近的附魔台位置，如果找不到则返回null
+ */
+private Location findNearestEnchantingTable(Location location) {
+    /* 在玩家周围3格范围内搜索附魔台（确保找到的是玩家正在交互的附魔台） */
+    int searchRadius = 3;
+    Location nearestTable = null;
+    double nearestDistance = Double.MAX_VALUE;
+
+    for (int dx = -searchRadius; dx <= searchRadius; dx++) {
+        for (int dy = -2; dy <= 2; dy++) {
+            for (int dz = -searchRadius; dz <= searchRadius; dz++) {
+                Block block = location.clone().add(dx, dy, dz).getBlock();
+                if (block.getType() == Material.ENCHANTING_TABLE) {
+                    /* 计算与玩家的距离 */
+                    double distance = block.getLocation().distanceSquared(location);
+                    /* 只接受在合理交互距离内的附魔台（6格以内） */
+                    if (distance <= 36.0 && distance < nearestDistance) {
+                        nearestDistance = distance;
+                        nearestTable = block.getLocation();
+                    }
+                }
+            }
+        }
+    }
+
+    return nearestTable;
+}
+```
+
+### 5.3 附魔等级限制算法
+
+```java
+/**
+ * 监听附魔物品事件
+ * 当玩家通过附魔台完成附魔时，强制将所有附魔等级设为 I级
+ *
+ * @param event 附魔物品事件
  */
 @EventHandler(priority = EventPriority.HIGH)
 public void onEnchantItem(EnchantItemEvent event) {
-    /* 获取附魔结果Map */
-    Map<Enchantment, Integer> enchants = event.getEnchantsToAdd();
-    
-    /* 创建新的附魔Map，所有等级设为1 */
-    Map<Enchantment, Integer> levelOneEnchants = new HashMap<>();
-    for (Enchantment enchant : enchants.keySet()) {
-        levelOneEnchants.put(enchant, 1); // 强制I级
+    /* 获取即将添加的附魔Map */
+    Map<Enchantment, Integer> enchantsToAdd = event.getEnchantsToAdd();
+
+    /* 如果附魔列表为空，直接返回 */
+    if (enchantsToAdd.isEmpty()) {
+        return;
     }
-    
-    /* 清除原附魔，添加I级附魔 */
-    enchants.clear();
-    enchants.putAll(levelOneEnchants);
+
+    /* 创建新的附魔Map，所有等级强制设为 I级（1级） */
+    Map<Enchantment, Integer> levelOneEnchants = new HashMap<>();
+
+    for (Enchantment enchantment : enchantsToAdd.keySet()) {
+        /* 强制等级为 I级（1级） */
+        levelOneEnchants.put(enchantment, 1);
+    }
+
+    /* 清除原附魔列表 */
+    enchantsToAdd.clear();
+
+    /* 添加 I级附魔 */
+    enchantsToAdd.putAll(levelOneEnchants);
 }
 ```
 
-### 4.3 附魔物品限制算法（新增）
+### 5.4 附魔物品限制算法（双重验证）
 
 ```java
-/*
+/**
+ * 第一层验证：PrepareItemEnchantEvent
  * 限制只有普通书（BOOK）才能显示附魔选项
- * 在 PrepareItemEnchantEvent 事件中调用
  */
-@EventHandler(priority = EventPriority.HIGH)
+@EventHandler(priority = EventPriority.HIGHEST)
 public void onPrepareItemEnchant(PrepareItemEnchantEvent event) {
-    /* 获取附魔位置的物品 */
     ItemStack item = event.getItem();
-    
-    /* 如果物品为空，直接返回 */
+
     if (item == null || item.getType() == Material.AIR) {
         return;
     }
-    
+
     /* 判断物品是否为普通书（BOOK） */
     if (item.getType() != Material.BOOK) {
-        /* 非普通书：设置附魔等级为0，不显示任何附魔选项 */
-        event.setOfferedExpLevel(0);
-        /* 注意：此处不发送任何提示，静默处理 */
+        /* 非普通书：将所有附魔选项设为null */
+        EnchantmentOffer[] offers = event.getOffers();
+        if (offers != null) {
+            for (int i = 0; i < offers.length; i++) {
+                offers[i] = null;
+            }
+        }
     }
-    /* 普通书：不做任何干预，正常显示附魔选项 */
+}
+
+/**
+ * 第二层验证：EnchantItemEvent
+ * 二次检查：确保只有普通书才能完成附魔
+ */
+@EventHandler(priority = EventPriority.HIGHEST)
+public void onEnchantItem(EnchantItemEvent event) {
+    ItemStack item = event.getItem();
+
+    if (item == null) {
+        return;
+    }
+
+    /* 判断物品是否为普通书（BOOK） */
+    if (item.getType() != Material.BOOK) {
+        /* 非普通书：取消附魔事件 */
+        event.setCancelled(true);
+        /* 清除所有要添加的附魔 */
+        event.getEnchantsToAdd().clear();
+    }
 }
 ```
 
-### 4.4 铁砧经验限制算法（新增）
+### 5.5 铁砧经验限制算法（双重保障）
 
 ```java
-/*
- * 强制将铁砧经验成本固定为60级
- * 在 PrepareAnvilEvent 事件中调用
- * 注意：使用 AnvilView 的 getRepairCost() 和 setRepairCost() 方法（新API）
- *       AnvilInventory 的对应方法已过时
+/**
+ * 第一层保障：PrepareAnvilEvent
  */
 @EventHandler(priority = EventPriority.HIGHEST)
 public void onPrepareAnvil(PrepareAnvilEvent event) {
-    /* 获取铁砧视图对象（新API，替代AnvilInventory的过时方法） */
     AnvilView anvilView = event.getView();
-    
-    /* 获取当前修复成本（原计算值） */
     int originalCost = anvilView.getRepairCost();
-    
-    /* 强制设置修复成本为固定值30级 */
-    /* 30级低于40级限制，不会显示"过于昂贵" */
+
+    /* 只有存在有效操作时才修改 */
     if (originalCost > 0) {
-        /* 只有存在有效操作时才修改（避免干扰空铁砧） */
-        anvilView.setRepairCost(30);
+        int fixedCost = anvilConfig.getFixedExpCost();
+        anvilView.setRepairCost(fixedCost);
     }
-    /* 注意：此处不发送任何提示，静默处理 */
-    /* setRepairCost 会同时修改界面显示和实际消耗的经验 */
 }
 
-### 4.5 铁砧经验限制说明（更新）
+/**
+ * 第二层保障：InventoryClickEvent
+ */
+@EventHandler(priority = EventPriority.HIGHEST)
+public void onInventoryClick(InventoryClickEvent event) {
+    /* 只处理铁砧界面 */
+    if (event.getInventory().getType() != InventoryType.ANVIL) {
+        return;
+    }
+
+    /* 只处理结果槽位的点击 */
+    if (event.getRawSlot() != 2) {
+        return;
+    }
+
+    /* 确保点击者是人类玩家 */
+    if (!(event.getWhoClicked() instanceof Player)) {
+        return;
+    }
+
+    /* 获取铁砧视图 */
+    if (!(event.getView() instanceof AnvilView)) {
+        return;
+    }
+
+    AnvilView anvilView = (AnvilView) event.getView();
+    int currentCost = anvilView.getRepairCost();
+
+    /* 只有在存在有效成本时才修改 */
+    if (currentCost > 0) {
+        int fixedCost = anvilConfig.getFixedExpCost();
+
+        /* 如果成本不是固定值，则重新设置 */
+        if (currentCost != fixedCost) {
+            anvilView.setRepairCost(fixedCost);
+        }
+    }
+}
+```
+
+### 5.6 ProtocolLib 数据包修复（带存在性检查）
 
 ```java
-/*
- * 铁砧经验限制说明
- * 将经验成本固定为30级，低于40级限制，避免"过于昂贵"显示问题
- * 无需使用 ProtocolLib 修复，代码更简单
+/**
+ * 注册 ProtocolLib 数据包监听器
  */
+private void registerPacketListener(Plugin plugin) {
+    /* 检查 ProtocolLib 是否已加载 */
+    if (!isProtocolLibAvailable()) {
+        plugin.getLogger().warning("ProtocolLib 未找到...");
+        return;
+    }
 
-/* 配置示例 */
-// fixed-exp-cost: 30
-// 30级低于Minecraft原版的40级限制
-// 因此不会显示"过于昂贵"，玩家可以正常使用铁砧
-```
+    try {
+        ProtocolManager protocolManager = ProtocolLibrary.getProtocolManager();
+
+        protocolManager.addPacketListener(new PacketAdapter(
+                plugin,
+                PacketType.Play.Server.WINDOW_DATA
+        ) {
+            @Override
+            public void onPacketSending(PacketEvent event) {
+                /* ... 数据包处理逻辑 ... */
+            }
+        });
+    } catch (Exception e) {
+        plugin.getLogger().warning("注册 ProtocolLib 数据包监听器时发生错误...");
+    }
+}
+
+/**
+ * 检查 ProtocolLib 是否可用
+ */
+private boolean isProtocolLibAvailable() {
+    try {
+        return Bukkit.getPluginManager().getPlugin("ProtocolLib") != null;
+    } catch (Exception e) {
+        return false;
+    }
+}
 ```
 
-### 4.6 事件监听优先级
+### 5.7 命令系统
+
+```java
+/**
+ * XH插件命令执行器
+ * 处理 /xh 命令及其子命令
+ */
+public class XHCommand implements CommandExecutor {
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, 
+                           String label, String[] args) {
+        /* 无参数时显示帮助信息 */
+        if (args.length == 0) {
+            sendHelp(sender);
+            return true;
+        }
+
+        String subCommand = args[0].toLowerCase();
+
+        switch (subCommand) {
+            case "reload":
+            case "rl":
+                return handleReload(sender);
+            case "help":
+                sendHelp(sender);
+                return true;
+            default:
+                sender.sendMessage("§c未知命令...");
+                return true;
+        }
+    }
+
+    private boolean handleReload(CommandSender sender) {
+        /* 检查权限 */
+        if (!sender.hasPermission("xh.admin")) {
+            sender.sendMessage("§c你没有权限执行此命令");
+            return true;
+        }
+
+        /* 重载配置 */
+        plugin.getEnchantingTableConfig().reload();
+        plugin.getAnvilConfig().reload();
+
+        sender.sendMessage("§aXH 插件配置重载完成！");
+        return true;
+    }
+}
+```
+
+### 5.8 事件监听优先级
 
 | 事件 | 优先级 | 原因 |
 |------|--------|------|
 | `InventoryOpenEvent` | `HIGH` | 确保在其他插件之前处理，及时取消 |
 | `BlockPlaceEvent` | `MONITOR` | 监控书架放置，不干预其他插件 |
 | `BlockBreakEvent` | `MONITOR` | 监控书架破坏，不干预其他插件 |
-| `EnchantItemEvent` | `HIGH` | 在附魔应用前修改等级 |
+| `EnchantItemEvent` | `HIGH` / `HIGHEST` | 在附魔应用前修改等级或取消事件 |
 | `PrepareItemEnchantEvent` | `HIGHEST` | 确保最后执行，覆盖其他插件的修改 |
-| `PrepareAnvilEvent` | `HIGHEST` | **新增**：确保最后执行，强制固定经验成本 |
+| `PrepareAnvilEvent` | `HIGHEST` | 确保最后执行，强制固定经验成本 |
+| `InventoryClickEvent` | `HIGHEST` | 确保在点击时再次验证铁砧成本 |
 
-### 4.6 配置项设计
+---
+
+## 六、配置文件
+
+### 6.1 enchantingTable.yml
 
 ```yaml
-# enchantingTable.yml 设计
-# 满级所需书架数量
+# 满级附魔台配置文件
 required-bookshelves: 15
-
-# 注：非满级附魔台静默阻止，不发送任何提示消息
-# 注：附魔等级强制为 I级，无需配置
-# 注：只有普通书可附魔，其他物品静默阻止
+# 满级所需书架数量（默认15，范围0-30）
+# 附魔等级强制为 I级，无需配置
 ```
+
+### 6.2 anvil.yml
 
 ```yaml
-# anvil.yml 设计
-# 铁砧固定经验成本（默认30，建议不超过39，避免"过于昂贵"显示）
+# 铁砧经验限制配置文件
 fixed-exp-cost: 30
+# 铁砧固定经验成本（默认30，范围0-1000）
+# 无论何种操作（修复/重命名/合并附魔），经验成本始终为 fixed-exp-cost
 
-# 注：铁砧经验固定为30级，无论何种操作
-# 注：30级低于40级限制，不会显示"过于昂贵"
+max-repair-cost: 30
+# 最大修复成本（默认30，用于 ProtocolLib 修复"过于昂贵"显示）
 ```
 
-## 五、注意事项
+---
 
-### 5.1 性能考虑
-- 书架检测涉及遍历大量方块，应在必要时才执行
-- 考虑使用缓存机制，避免每次打开都重新计算
-- 书架变动时只更新附近附魔台的缓存
+## 七、权限节点
+
+| 权限节点 | 描述 | 默认值 |
+|----------|------|--------|
+| `xh.use` | 允许使用 `/xh` 命令 | true（所有人） |
+| `xh.admin` | 允许重载插件配置 | op |
+
+---
+
+## 八、命令列表
+
+| 命令 | 描述 | 权限 |
+|------|------|------|
+| `/xh` | 显示帮助信息 | xh.use |
+| `/xh help` | 显示帮助信息 | xh.use |
+| `/xh reload` | 重载插件配置 | xh.admin |
+
+---
+
+## 九、注意事项
+
+### 9.1 性能考虑
+- 书架检测涉及遍历大量方块，但只在打开附魔台时执行
 - 附魔等级修改和铁砧经验修改在事件中进行，开销极小
+- 书架变动时只更新附近附魔台的缓存（为未来缓存扩展预留）
 
-### 5.2 兼容性考虑
+### 9.2 兼容性考虑
 - 与其他修改附魔机制的插件可能存在冲突
 - 使用适当的事件优先级避免问题
-- 提供配置选项让玩家/服主自定义
-- 附魔等级修改可能影响某些依赖高等级的插件
+- ProtocolLib 为可选依赖，不存在时优雅降级
 
-### 5.3 注意事项
-- 附魔等级强制为 I级，不可配置
-- 对所有通过附魔台获得的附魔都生效
-- 包括通过附魔书获得的附魔
-- 不影响铁砧合并/修复获得的附魔等级
-- 铁砧经验固定为30级，无论何种操作（修复/重命名/合并附魔）
-- 铁砧操作不发送任何提示，静默处理
-- 30级低于40级限制，不会显示"过于昂贵"，无需额外修复
+### 9.3 静默处理原则
+- 所有阻止操作都不发送任何提示消息给玩家
+- 保持原版体验，玩家不会感到突兀
 
-## 六、后续扩展方向
+---
 
-1. **权限系统**：特定权限可绕过满级限制或等级限制
-2. **等级分层**：不同书架数量对应不同附魔等级上限
-3. **特殊附魔台**：支持命名附魔台，个性化配置
-4. **经济集成**：满级附魔需要消耗金钱
-5. **统计功能**：记录玩家附魔次数和成功率
-6. **附魔白名单**：某些附魔可以保留原等级
-7. **铁砧配置**：支持自定义铁砧经验成本
+## 十、版本历史
+
+### v0.0.1
+- 初始版本
+- 满级附魔台限制功能
+- 附魔等级强制 I级功能
+- 附魔物品限制（仅普通书）功能
+- 铁砧经验固定功能
+- ProtocolLib 数据包修复
+- 命令系统（/xh reload）

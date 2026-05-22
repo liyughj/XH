@@ -3,6 +3,7 @@ package io.github.liyughj.xH;
 import io.github.liyughj.xH.anvil.AnvilConfig;
 import io.github.liyughj.xH.anvil.AnvilListener;
 import io.github.liyughj.xH.anvil.AnvilPacketListener;
+import io.github.liyughj.xH.command.XHCommand;
 import io.github.liyughj.xH.enchantingTable.BookshelfListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingItemListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingLevelListener;
@@ -69,11 +70,15 @@ public final class XH extends JavaPlugin {
         /* 修复铁砧"过于昂贵"显示问题，允许超过40级的经验成本 */
         new AnvilPacketListener(this, anvilConfig.getMaxRepairCost());
 
+        /* 注册命令执行器 */
+        getCommand("xh").setExecutor(new XHCommand(this));
+
         getLogger().info("XH插件已启用！");
         getLogger().info("满级附魔台所需书架数量：" + enchantingTableConfig.getRequiredBookshelves());
         getLogger().info("附魔等级限制：强制 I级");
         getLogger().info("附魔物品限制：仅普通书可附魔");
         getLogger().info("铁砧经验成本：固定 " + anvilConfig.getFixedExpCost() + " 级（低于40级，不会显示过于昂贵）");
+        getLogger().info("使用 /xh reload 命令可以重载配置");
     }
 
     @Override

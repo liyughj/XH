@@ -87,25 +87,34 @@ public class EnchantingTableListener implements Listener {
 
     /**
      * 查找玩家附近的附魔台
+     * 只在合理范围内搜索（玩家与附魔台交互的最大距离为6格）
      *
      * @param location 玩家位置
      * @return 最近的附魔台位置，如果找不到则返回null
      */
     private Location findNearestEnchantingTable(Location location) {
-        /* 在玩家周围5格范围内搜索附魔台 */
-        int searchRadius = 5;
+        /* 在玩家周围3格范围内搜索附魔台（确保找到的是玩家正在交互的附魔台） */
+        int searchRadius = 3;
+        Location nearestTable = null;
+        double nearestDistance = Double.MAX_VALUE;
 
         for (int dx = -searchRadius; dx <= searchRadius; dx++) {
-            for (int dy = -searchRadius; dy <= searchRadius; dy++) {
+            for (int dy = -2; dy <= 2; dy++) {
                 for (int dz = -searchRadius; dz <= searchRadius; dz++) {
                     Block block = location.clone().add(dx, dy, dz).getBlock();
                     if (block.getType() == Material.ENCHANTING_TABLE) {
-                        return block.getLocation();
+                        /* 计算与玩家的距离 */
+                        double distance = block.getLocation().distanceSquared(location);
+                        /* 只接受在合理交互距离内的附魔台（6格以内） */
+                        if (distance <= 36.0 && distance < nearestDistance) {
+                            nearestDistance = distance;
+                            nearestTable = block.getLocation();
+                        }
                     }
                 }
             }
         }
 
-        return null;
+        return nearestTable;
     }
 }
