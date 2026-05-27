@@ -1,9 +1,13 @@
 package io.github.liyughj.xH.command;
 
 import io.github.liyughj.xH.XH;
+import io.github.liyughj.xH.enchantmentLevel.EnchantmentLevelConfig;
+import io.github.liyughj.xH.enchantmentLevel.EnchantmentLevelDisplay;
+import io.github.liyughj.xH.enchantmentLevel.SpecialEffects;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 
 /**
  * XH插件命令执行器
@@ -37,6 +41,8 @@ public class XHCommand implements CommandExecutor {
             case "reload":
             case "rl":
                 return handleReload(sender);
+            case "lore":
+                return handleLore(sender, args);
             case "help":
                 sendHelp(sender);
                 return true;
@@ -68,11 +74,57 @@ public class XHCommand implements CommandExecutor {
             /* 重载铁砧配置 */
             plugin.getAnvilConfig().reload();
 
+            /* 重载附魔升级配置 */
+            EnchantmentLevelConfig levelConfig = EnchantmentLevelConfig.getInstance();
+            if (levelConfig != null) {
+                levelConfig.reload();
+            }
+
+            /* 重载特效配置 */
+            SpecialEffects effects = SpecialEffects.getInstance();
+            if (effects != null) {
+                effects.reload();
+            }
+
             sender.sendMessage("§aXH 插件配置重载完成！");
             plugin.getLogger().info("配置已通过命令重载 - 操作者: " + sender.getName());
         } catch (Exception e) {
             sender.sendMessage("§c重载配置时发生错误: " + e.getMessage());
             plugin.getLogger().warning("重载配置时发生错误: " + e.getMessage());
+        }
+
+        return true;
+    }
+
+    /**
+     * 处理附魔经验显示切换命令
+     * /xh lore xp → 切换到经验显示模式
+     * /xh lore    → 切换回正常附魔显示
+     *
+     * @param sender 命令发送者
+     * @param args   命令参数
+     * @return 命令是否执行成功
+     */
+    private boolean handleLore(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§c此命令只能由玩家执行");
+            return true;
+        }
+
+        EnchantmentLevelDisplay display = plugin.getEnchantmentLevelDisplay();
+        if (display == null) {
+            sender.sendMessage("§c附魔升级系统未启用");
+            return true;
+        }
+
+        /* /xh lore xp → 开启经验显示模式 */
+        if (args.length >= 2 && args[1].equalsIgnoreCase("xp")) {
+            display.setXpMode(player, true);
+            player.sendMessage("§a已切换到 §e经验显示模式 §a（显示附魔经验进度）");
+        } else {
+            /* /xh lore → 关闭经验显示模式，恢复正常附魔显示 */
+            display.setXpMode(player, false);
+            player.sendMessage("§a已切换到 §e正常模式 §a（显示原版附魔）");
         }
 
         return true;
@@ -86,6 +138,8 @@ public class XHCommand implements CommandExecutor {
     private void sendHelp(CommandSender sender) {
         sender.sendMessage("§6========== XH 插件帮助 ==========");
         sender.sendMessage("§e/xh reload §7- 重载插件配置");
+        sender.sendMessage("§e/xh lore xp §7- 切换到经验显示模式");
+        sender.sendMessage("§e/xh lore §7- 切换回正常附魔显示");
         sender.sendMessage("§e/xh help §7- 显示此帮助信息");
         sender.sendMessage("§6================================");
 

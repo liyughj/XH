@@ -4,6 +4,7 @@ import io.github.liyughj.xH.anvil.AnvilConfig;
 import io.github.liyughj.xH.anvil.AnvilListener;
 import io.github.liyughj.xH.anvil.AnvilPacketListener;
 import io.github.liyughj.xH.command.XHCommand;
+import io.github.liyughj.xH.enchantmentLevel.*;
 import io.github.liyughj.xH.enchantingTable.BookshelfListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingItemListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingLevelListener;
@@ -22,6 +23,9 @@ public final class XH extends JavaPlugin {
 
     /* 铁砧配置管理器 */
     private AnvilConfig anvilConfig;
+
+    /* 附魔经验显示管理器 */
+    private EnchantmentLevelDisplay enchantmentLevelDisplay;
 
     @Override
     public void onEnable() {
@@ -70,6 +74,32 @@ public final class XH extends JavaPlugin {
         /* 修复铁砧"过于昂贵"显示问题，允许超过40级的经验成本 */
         new AnvilPacketListener(this, anvilConfig.getMaxRepairCost());
 
+        /* ========== 附魔升级系统 ========== */
+
+        /* 初始化附魔升级配置（使用 enchantmentLevel.yml） */
+        EnchantmentLevelConfig levelConfig = EnchantmentLevelConfig.getInstance(this);
+        if (levelConfig.isEnabled()) {
+            /* 初始化升级特效配置（使用 specialEffects.yml） */
+            SpecialEffects specialEffects = SpecialEffects.getInstance(this);
+
+            /* 创建经验管理器 */
+            EnchantmentLevelManager levelManager = new EnchantmentLevelManager(levelConfig);
+
+            /* 注册附魔升级事件监听器 */
+            getServer().getPluginManager().registerEvents(
+                new EnchantmentLevelListener(levelManager, levelConfig, specialEffects),
+                this
+            );
+
+            /* 注册附魔经验显示（含ProtocolLib数据包监听器） */
+            this.enchantmentLevelDisplay = new EnchantmentLevelDisplay(this, levelManager, levelConfig);
+            getServer().getPluginManager().registerEvents(enchantmentLevelDisplay, this);
+
+            getLogger().info("附魔升级系统已启用");
+        } else {
+            getLogger().info("附魔升级系统已禁用（配置中 enabled=false）");
+        }
+
         /* 注册命令执行器 */
         getCommand("xh").setExecutor(new XHCommand(this));
 
@@ -102,5 +132,14 @@ public final class XH extends JavaPlugin {
      */
     public AnvilConfig getAnvilConfig() {
         return anvilConfig;
+    }
+
+    /**
+     * 获取附魔经验显示管理器
+     *
+     * @return 显示管理器实例
+     */
+    public EnchantmentLevelDisplay getEnchantmentLevelDisplay() {
+        return enchantmentLevelDisplay;
     }
 }
