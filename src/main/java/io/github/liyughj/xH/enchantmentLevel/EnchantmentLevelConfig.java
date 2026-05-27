@@ -39,7 +39,7 @@ public class EnchantmentLevelConfig {
     private static final String KEY_BASE_EXP = "base-exp";
     private static final String KEY_MULTIPLIER = "multiplier";
     private static final String KEY_INCREMENT = "increment";
-    private static final String KEY_MAX_LEVELS = "max-levels";  // 附魔最高等级配置
+    private static final String KEY_MAX_LEVELS = "max-levels";
     private static final String KEY_EXP_SOURCES = "exp-sources";
     private static final String KEY_SOURCE_ENABLED = "enabled";
     private static final String KEY_BLOCK_MULTIPLIER = "block-exp-multiplier";

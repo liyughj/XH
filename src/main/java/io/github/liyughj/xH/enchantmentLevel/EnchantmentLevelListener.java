@@ -87,24 +87,31 @@ public class EnchantmentLevelListener implements Listener {
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
         if (!config.isEnabled() || !config.isMeleeSourceEnabled()) return;
 
+        /* 检查攻击者是否为玩家 */
         if (!(event.getDamager() instanceof Player player)) return;
+        /* 检查目标是否为生物 */
         if (!(event.getEntity() instanceof LivingEntity target)) return;
 
+        /* 获取主手武器 */
         ItemStack weapon = player.getInventory().getItemInMainHand();
         if (!isMeleeWeapon(weapon)) return;
 
         /* 获取经验值（基于伤害量） */
         int expAmount = (int) Math.max(1, event.getDamage() * config.getEntityExpMultiplier());
 
+        /* 获取武器上的所有附魔 */
         Set<Enchantment> enchants = EnchantmentLevelData.getAllEnchantments(weapon);
         if (enchants.isEmpty()) return;
 
+        /* 自动初始化经验数据 */
         if (config.isAutoInitialize() && !manager.hasExpData(weapon)) {
             manager.initializeExp(weapon);
         }
 
+        /* 为每个附魔添加经验 */
         List<Enchantment> upgraded = manager.addExpToEnchantments(weapon, expAmount);
 
+        /* 播放升级特效 */
         if (!upgraded.isEmpty()) {
             playUpgradeEffects(player, weapon, upgraded);
         }
@@ -117,10 +124,14 @@ public class EnchantmentLevelListener implements Listener {
     public void onProjectileHit(ProjectileHitEvent event) {
         if (!config.isEnabled() || !config.isRangedSourceEnabled()) return;
 
+        /* 检查是否为箭矢 */
         if (!(event.getEntity() instanceof Arrow arrow)) return;
+        /* 检查射击者是否为玩家 */
         if (!(arrow.getShooter() instanceof Player player)) return;
+        /* 检查命中目标是否为生物 */
         if (!(event.getHitEntity() instanceof LivingEntity target)) return;
 
+        /* 获取主手武器 */
         ItemStack bow = player.getInventory().getItemInMainHand();
         if (!isRangedWeapon(bow)) {
             /* 副手检查 */
@@ -131,15 +142,19 @@ public class EnchantmentLevelListener implements Listener {
         /* 获取经验值（基于箭矢伤害） */
         int expAmount = (int) Math.max(1, arrow.getDamage() * config.getEntityExpMultiplier());
 
+        /* 获取武器上的所有附魔 */
         Set<Enchantment> enchants = EnchantmentLevelData.getAllEnchantments(bow);
         if (enchants.isEmpty()) return;
 
+        /* 自动初始化经验数据 */
         if (config.isAutoInitialize() && !manager.hasExpData(bow)) {
             manager.initializeExp(bow);
         }
 
+        /* 为每个附魔添加经验 */
         List<Enchantment> upgraded = manager.addExpToEnchantments(bow, expAmount);
 
+        /* 播放升级特效 */
         if (!upgraded.isEmpty()) {
             playUpgradeEffects(player, bow, upgraded);
         }
@@ -152,6 +167,7 @@ public class EnchantmentLevelListener implements Listener {
     public void onEntityDamage(EntityDamageEvent event) {
         if (!config.isEnabled() || !config.isArmorSourceEnabled()) return;
 
+        /* 检查受伤者是否为玩家 */
         if (!(event.getEntity() instanceof Player player)) return;
 
         /* 获取经验值（基于受伤量） */
@@ -162,17 +178,22 @@ public class EnchantmentLevelListener implements Listener {
         ItemStack[] armor = {inv.getHelmet(), inv.getChestplate(), inv.getLeggings(), inv.getBoots()};
 
         for (ItemStack piece : armor) {
+            /* 跳过空槽位 */
             if (piece == null || piece.getType().isAir()) continue;
 
+            /* 获取护甲上的所有附魔 */
             Set<Enchantment> enchants = EnchantmentLevelData.getAllEnchantments(piece);
             if (enchants.isEmpty()) continue;
 
+            /* 自动初始化经验数据 */
             if (config.isAutoInitialize() && !manager.hasExpData(piece)) {
                 manager.initializeExp(piece);
             }
 
+            /* 为每个附魔添加经验 */
             List<Enchantment> upgraded = manager.addExpToEnchantments(piece, expAmount);
 
+            /* 播放升级特效 */
             if (!upgraded.isEmpty()) {
                 playUpgradeEffects(player, piece, upgraded);
             }
