@@ -350,7 +350,7 @@ public class EnchantmentLevelManager {
             case "sharpness" -> 1;           // 锋利
             case "smite" -> 2;               // 亡灵杀手
             case "bane_of_arthropods" -> 3;  // 节肢杀手
-            case "sweeping" -> 4;            // 横扫之刃
+            case "sweeping_edge" -> 4;       // 横扫之刃
             case "fire_aspect" -> 5;         // 火焰附加
             case "knockback" -> 6;           // 击退
             case "looting" -> 7;             // 抢夺

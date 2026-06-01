@@ -186,7 +186,6 @@ public class EnchantmentLevelConfig {
         defaultConfig.set(KEY_EXP_SOURCES + "." + KEY_ARMOR + "." + KEY_DAMAGE_MULTIPLIER, DEFAULT_MULTIPLIER_VAL);
 
         /* 显示设置 */
-        defaultConfig.set(KEY_DISPLAY + "." + KEY_FORMAT + "." + KEY_SHOW_ON_SHIFT, DEFAULT_SHOW_ON_SHIFT);
         defaultConfig.set(KEY_DISPLAY + "." + KEY_FORMAT + "." + KEY_EXP_BAR_LENGTH, DEFAULT_EXP_BAR_LENGTH);
         defaultConfig.set(KEY_DISPLAY + "." + KEY_AUTO_INITIALIZE, DEFAULT_AUTO_INIT);
 
@@ -213,10 +212,13 @@ public class EnchantmentLevelConfig {
             "  ranged-weapon: 远程武器附魔（箭矢命中）",
             "  armor: 护甲附魔（受到伤害）",
             "display: 显示设置",
-            "  format.show-when-shift-only: 仅Shift时显示",
             "  format.exp-bar-length: 经验条长度",
             "  auto-initialize: 获得附魔时自动初始化经验数据",
-            "upgrade-effects: 升级特效设置"
+            "upgrade-effects: 升级特效设置",
+            "",
+            "指令切换显示模式:",
+            "  /xh lore xp  - 切换到经验显示模式（显示附魔经验进度）",
+            "  /xh lore     - 切换回正常模式（显示原版附魔）"
         );
         defaultConfig.options().setHeader(headerLines);
 

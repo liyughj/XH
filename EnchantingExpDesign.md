@@ -3,7 +3,7 @@
 ## 一、功能概述
 
 1. **附魔经验累积** - 工具/武器/护甲使用时积累经验，附魔等级随经验增长自动升级
-2. **背包Shift悬停显示** - 在背包内按住 Shift 悬停物品时，显示每个附魔的经验进度条
+2. **指令切换显示模式** - 通过 `/xh lore xp` 指令切换到经验显示模式，查看附魔经验进度；`/xh lore` 切换回正常模式
 3. **原版附魔同步** - 升级时自动更新物品的原版附魔等级，保持一致性
 4. **罗马数字无限支持** - 最高支持显示 3999 级（Mↀↁↂↇↈ），覆盖所有实际场景
 
@@ -123,8 +123,11 @@ exp-sources:
 
 display:
   format:
-    show-when-shift-only: true         # 仅Shift时显示
     exp-bar-length: 10                 # 经验条长度
+
+# 注：显示模式通过指令切换
+# /xh lore xp  → 切换到经验显示模式（显示附魔经验进度）
+# /xh lore     → 切换回正常模式（显示原版附魔）
 
 upgrade-effects:
   enabled: true
@@ -199,7 +202,7 @@ Component name = enchant.description();
 // 显示为 "锋利"（客户端语言为中文时）
 ```
 
-### 3.4 背包Shift悬停显示（EnchantmentLevelDisplay）
+### 3.4 指令切换显示模式（EnchantmentLevelDisplay）
 
 #### 技术方案
 
@@ -208,10 +211,10 @@ Component name = enchant.description();
 #### 显示逻辑
 
 ```
-玩家打开背包 → 检测Shift按下 → 修改物品Lore →
-通过ProtocolLib发包 → 客户端渲染自定义Lore
+玩家执行 /xh lore xp → 标记为经验显示模式 → 修改物品Lore →
+通过ProtocolLib发包 → 客户端渲染经验进度条
 
-非Shift状态 → 发包时不注入Lore → 客户端显示原版附魔
+玩家执行 /xh lore → 移除经验显示标记 → 发包时不注入Lore → 客户端显示原版附魔
 ```
 
 #### Lore格式
@@ -244,19 +247,32 @@ for (int i = 0; i < slots.size(); i++) {
 }
 ```
 
-#### Shift状态追踪
+#### 显示模式追踪
 
 ```java
-// 监听玩家Shift切换
-@EventHandler
-public void onSneak(ToggleSneakEvent event) {
-    if (event.isSneaking()) {
-        shiftingPlayers.add(player.getUniqueId());
-        refreshInventory(player);
+// 开启了经验显示模式的玩家集合
+private final Set<UUID> xpModePlayers = new HashSet<>();
+
+// 设置玩家的经验显示模式
+public void setXpMode(Player player, boolean on) {
+    if (on) {
+        xpModePlayers.add(player.getUniqueId());
     } else {
-        shiftingPlayers.remove(player.getUniqueId());
-        refreshInventory(player);
+        xpModePlayers.remove(player.getUniqueId());
     }
+    // 延迟一 tick 刷新，确保模式切换完成后再发包
+    Bukkit.getScheduler().runTaskLater(plugin, () -> refreshInventory(player), 1L);
+}
+
+// 查询玩家是否开启了经验显示模式
+public boolean isXpMode(Player player) {
+    return xpModePlayers.contains(player.getUniqueId());
+}
+
+// 玩家退出时清理数据
+@EventHandler
+public void onPlayerQuit(PlayerQuitEvent event) {
+    xpModePlayers.remove(event.getPlayer().getUniqueId());
 }
 ```
 
