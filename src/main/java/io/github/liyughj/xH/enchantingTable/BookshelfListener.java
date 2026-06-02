@@ -14,38 +14,27 @@ import java.util.Set;
 
 /**
  * 书架事件监听器
- * 监听书架的放置和破坏事件，用于触发附近附魔台的重新检测
- * 注：当前版本仅做监控，实际阻止逻辑在EnchantingTableListener中处理
+ * 监听书架的放置和破坏事件，触发附近附魔台状态更新
+ * 注：实际阻止逻辑在 EnchantingTableListener 中处理（基于 InventoryOpenEvent 实时检测）
+ * 当前类主要作为扩展点保留，以便未来添加缓存或预计算机制
  */
 public class BookshelfListener implements Listener {
 
     /* 搜索附魔台的范围：书架变动时，在此范围内搜索附魔台 */
-    private static final int SEARCH_RADIUS = 15;
+    private static final int SEARCH_RADIUS = 8;
 
     /**
      * 监听书架放置事件
      *
      * @param event 方块放置事件
      */
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
-        /* 只处理书架方块 */
         if (event.getBlock().getType() != Material.BOOKSHELF) {
             return;
         }
-
-        /* 获取放置的书架位置 */
-        Location bookshelfLoc = event.getBlock().getLocation();
-
-        /* 查找附近的所有附魔台 */
-        Set<Location> enchantingTables = findNearbyEnchantingTables(bookshelfLoc);
-
-        /* 触发附魔台更新（当前版本主要用于未来扩展缓存机制） */
-        for (Location tableLoc : enchantingTables) {
-            /* 重新计算该附魔台的书架数量 */
-            int count = EnchantingUtils.countBookshelves(tableLoc);
-            /* 此处可以添加缓存更新逻辑 */
-        }
+        /* 触发附近附魔台缓存刷新（当前为占位逻辑，预留给未来缓存优化） */
+        notifyNearbyEnchantingTables(event.getBlock().getLocation());
     }
 
     /**
@@ -53,24 +42,25 @@ public class BookshelfListener implements Listener {
      *
      * @param event 方块破坏事件
      */
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
-        /* 只处理书架方块 */
         if (event.getBlock().getType() != Material.BOOKSHELF) {
             return;
         }
+        /* 触发附近附魔台缓存刷新（当前为占位逻辑，预留给未来缓存优化） */
+        notifyNearbyEnchantingTables(event.getBlock().getLocation());
+    }
 
-        /* 获取被破坏的书架位置 */
-        Location bookshelfLoc = event.getBlock().getLocation();
-
-        /* 查找附近的所有附魔台 */
-        Set<Location> enchantingTables = findNearbyEnchantingTables(bookshelfLoc);
-
-        /* 触发附魔台更新（当前版本主要用于未来扩展缓存机制） */
-        for (Location tableLoc : enchantingTables) {
-            /* 重新计算该附魔台的书架数量 */
-            int count = EnchantingUtils.countBookshelves(tableLoc);
-            /* 此处可以添加缓存更新逻辑 */
+    /**
+     * 通知附近的附魔台进行状态更新
+     * 当前实现仅做扫描，未使用计算结果；保留作为未来缓存机制的扩展点
+     *
+     * @param center 中心位置（书架位置）
+     */
+    private void notifyNearbyEnchantingTables(Location center) {
+        /* 仅在需要时进行扫描，避免不必要的性能开销 */
+        for (Location tableLoc : findNearbyEnchantingTables(center)) {
+            /* 预留给未来缓存机制使用 */
         }
     }
 
@@ -83,7 +73,6 @@ public class BookshelfListener implements Listener {
     private Set<Location> findNearbyEnchantingTables(Location center) {
         Set<Location> enchantingTables = new HashSet<>();
 
-        /* 在15格范围内搜索附魔台 */
         for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
             for (int dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; dy++) {
                 for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; dz++) {

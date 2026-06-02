@@ -1,7 +1,6 @@
 package io.github.liyughj.xH.enchantmentLevel;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.enchantments.Enchantment;
@@ -27,9 +26,6 @@ public class EnchantmentLevelManager {
 
     /* Lore 颜色 */
     private static final TextColor ENCHANT_COLOR = TextColor.color(0xAAAAAA);
-    private static final TextColor EXP_BAR_FILL = TextColor.color(0x55AA55);
-    private static final TextColor EXP_BAR_EMPTY = TextColor.color(0x333333);
-    private static final TextColor EXP_TEXT_COLOR = TextColor.color(0x888888);
     private static final TextColor MAX_LEVEL_COLOR = TextColor.color(0xFFAA00);
 
     private final EnchantmentLevelConfig config;
@@ -421,34 +417,6 @@ public class EnchantmentLevelManager {
             case "wind_burst" -> 42;         // 风爆
             default -> 100;                  // 未知附魔放最后
         };
-    }
-
-    /**
-     * 构建经验条字符串 - 新样式
-     * 格式: [████████░░] 325/400
-     *
-     * @param current 当前经验
-     * @param needed  所需经验
-     * @return 经验条字符串
-     */
-    private String buildExpBar(int current, int needed) {
-        int barLength = config.getExpBarLength();
-        if (needed <= 0) needed = 1;
-
-        double progress = (double) current / needed;
-        int filledCount = (int) (progress * barLength);
-        filledCount = Math.max(0, Math.min(filledCount, barLength));
-
-        StringBuilder bar = new StringBuilder();
-        bar.append("[");
-        for (int i = 0; i < filledCount; i++) {
-            bar.append(BAR_FILL);
-        }
-        for (int i = filledCount; i < barLength; i++) {
-            bar.append(BAR_EMPTY);
-        }
-        bar.append("]");
-        return bar.toString();
     }
 
     /**

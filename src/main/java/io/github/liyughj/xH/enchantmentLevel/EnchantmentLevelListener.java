@@ -12,17 +12,10 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
-import org.bukkit.event.player.PlayerItemDamageEvent;
-import org.bukkit.inventory.AnvilInventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
-import org.bukkit.inventory.meta.Damageable;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.projectiles.ProjectileSource;
 
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * 附魔经验获取事件监听器
@@ -57,14 +50,14 @@ public class EnchantmentLevelListener implements Listener {
         Player player = event.getPlayer();
         ItemStack tool = player.getInventory().getItemInMainHand();
         if (!isTool(tool)) return;
+        if (!tool.hasItemMeta()) return;
 
         /* 获取经验值（基于方块硬度） */
         double hardness = event.getBlock().getType().getHardness();
         int expAmount = (int) Math.max(1, hardness * config.getBlockExpMultiplier());
 
-        /* 获取工具上的所有附魔 */
-        Set<Enchantment> enchants = EnchantmentLevelData.getAllEnchantments(tool);
-        if (enchants.isEmpty()) return;
+        /* 检查工具上是否有附魔 */
+        if (EnchantmentLevelData.getAllEnchantments(tool).isEmpty()) return;
 
         /* 初始化经验数据（如果尚未初始化） */
         if (config.isAutoInitialize() && !manager.hasExpData(tool)) {
@@ -94,14 +87,13 @@ public class EnchantmentLevelListener implements Listener {
 
         /* 获取主手武器 */
         ItemStack weapon = player.getInventory().getItemInMainHand();
-        if (!isMeleeWeapon(weapon)) return;
+        if (!isMeleeWeapon(weapon) || !weapon.hasItemMeta()) return;
 
         /* 获取经验值（基于伤害量） */
         int expAmount = (int) Math.max(1, event.getDamage() * config.getEntityExpMultiplier());
 
-        /* 获取武器上的所有附魔 */
-        Set<Enchantment> enchants = EnchantmentLevelData.getAllEnchantments(weapon);
-        if (enchants.isEmpty()) return;
+        /* 检查武器上是否有附魔 */
+        if (EnchantmentLevelData.getAllEnchantments(weapon).isEmpty()) return;
 
         /* 自动初始化经验数据 */
         if (config.isAutoInitialize() && !manager.hasExpData(weapon)) {
@@ -138,13 +130,13 @@ public class EnchantmentLevelListener implements Listener {
             bow = player.getInventory().getItemInOffHand();
             if (!isRangedWeapon(bow)) return;
         }
+        if (!bow.hasItemMeta()) return;
 
         /* 获取经验值（基于箭矢伤害） */
         int expAmount = (int) Math.max(1, arrow.getDamage() * config.getEntityExpMultiplier());
 
-        /* 获取武器上的所有附魔 */
-        Set<Enchantment> enchants = EnchantmentLevelData.getAllEnchantments(bow);
-        if (enchants.isEmpty()) return;
+        /* 检查武器上是否有附魔 */
+        if (EnchantmentLevelData.getAllEnchantments(bow).isEmpty()) return;
 
         /* 自动初始化经验数据 */
         if (config.isAutoInitialize() && !manager.hasExpData(bow)) {
@@ -178,12 +170,11 @@ public class EnchantmentLevelListener implements Listener {
         ItemStack[] armor = {inv.getHelmet(), inv.getChestplate(), inv.getLeggings(), inv.getBoots()};
 
         for (ItemStack piece : armor) {
-            /* 跳过空槽位 */
-            if (piece == null || piece.getType().isAir()) continue;
+            /* 跳过空槽位或无Meta的物品 */
+            if (piece == null || piece.getType().isAir() || !piece.hasItemMeta()) continue;
 
-            /* 获取护甲上的所有附魔 */
-            Set<Enchantment> enchants = EnchantmentLevelData.getAllEnchantments(piece);
-            if (enchants.isEmpty()) continue;
+            /* 检查护甲上是否有附魔 */
+            if (EnchantmentLevelData.getAllEnchantments(piece).isEmpty()) continue;
 
             /* 自动初始化经验数据 */
             if (config.isAutoInitialize() && !manager.hasExpData(piece)) {

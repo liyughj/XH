@@ -227,9 +227,10 @@ public class EnchantmentLevelData {
     /* ========== 工具方法 ========== */
 
     /**
-     * 生成附魔对应的 PDC key 字符串（小写，不含命名空间）
+     * 生成附魔对应的 PDC key 字符串（不含命名空间）
+     * Bukkit API 保证 enchant.getKey().getKey() 返回小写字符串
      */
     private static String enchantKey(Enchantment enchant) {
-        return enchant.getKey().getKey().toLowerCase();
+        return enchant.getKey().getKey();
     }
 }

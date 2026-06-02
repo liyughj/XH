@@ -178,6 +178,7 @@ public class EnchantmentLevelDisplay implements Listener {
 
     /**
      * 判断是否为经验进度Lore行
+     * 通过强特征（经验条方块字符或 [MAX] 标记）来识别，避免误判普通描述中的 "x/y" 文本
      *
      * @param line Lore行
      * @return 是否为经验进度行
@@ -185,9 +186,8 @@ public class EnchantmentLevelDisplay implements Listener {
     private boolean isExpLoreLine(Component line) {
         if (line == null) return false;
         String text = line.toString();
-        /* 检查是否包含经验条特征：█、░、[MAX]、数字/数字格式 */
-        return text.contains("█") || text.contains("░") || 
-               text.contains("[MAX]") || text.matches(".*\\d+/\\d+.*");
+        /* 经验条方块字符 [MAX] 标记是经验Lore的强特征 */
+        return text.contains("█") || text.contains("░") || text.contains("[MAX]");
     }
 
     /**
@@ -310,9 +310,24 @@ public class EnchantmentLevelDisplay implements Listener {
 
     /**
      * 玩家退出时清理追踪数据
+     * 避免玩家重新登录时颜色混乱，并防止内存泄漏
      */
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        xpModePlayers.remove(event.getPlayer().getUniqueId());
+        UUID uuid = event.getPlayer().getUniqueId();
+        xpModePlayers.remove(uuid);
+        playerMaxColors.remove(uuid);
+    }
+
+    /**
+     * 插件禁用时清理所有资源
+     * 通过 shutdown() 方法在 onDisable 中显式调用
+     */
+    public void shutdown() {
+        xpModePlayers.clear();
+        playerMaxColors.clear();
+        if (protocolManager != null) {
+            protocolManager.removePacketListeners(plugin);
+        }
     }
 }

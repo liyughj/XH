@@ -113,6 +113,10 @@ public final class XH extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        /* 清理附魔经验显示资源（内存清理、数据包监听器注销） */
+        if (enchantmentLevelDisplay != null) {
+            enchantmentLevelDisplay.shutdown();
+        }
         getLogger().info("XH插件已禁用！");
     }
 
