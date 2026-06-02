@@ -3,6 +3,7 @@ package io.github.liyughj.xH.enchantmentLevel;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.TextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
@@ -262,13 +263,26 @@ public class EnchantmentLevelManager {
     }
 
     /**
-     * 生成附魔的显示 Lore（用于背包Shift悬停）
+     * 生成附魔的显示 Lore（用于物品Lore显示）
      * 按照原版附魔注册顺序排序
      *
      * @param item 物品
      * @return Lore Component 列表
      */
     public List<Component> getDisplayLoreComponents(ItemStack item) {
+        return getDisplayLoreComponents(item, MAX_LEVEL_COLOR);
+    }
+
+    /**
+     * 生成附魔的显示 Lore（用于物品Lore显示）
+     * 按照原版附魔注册顺序排序
+     *
+     * @param item     物品
+     * @param maxColor 满级 [MAX] 文字颜色，传 null 则使用默认橙色
+     * @return Lore Component 列表
+     */
+    public List<Component> getDisplayLoreComponents(ItemStack item, TextColor maxColor) {
+        TextColor effectiveMaxColor = maxColor != null ? maxColor : MAX_LEVEL_COLOR;
         List<Component> lore = new ArrayList<>();
         if (item == null || !item.hasItemMeta()) return lore;
 
@@ -305,29 +319,38 @@ public class EnchantmentLevelManager {
                     expNeeded = getExpForNextLevel(level, enchant);
                 }
 
-                String bar = buildExpBar(exp, expNeeded);
+                /* 构建逐格变色的经验条 */
+                List<Component> barComponents = buildExpBarComponents(exp, expNeeded);
+
+                /* 计算进度，决定经验数字颜色 */
+                double progress = expNeeded > 0 ? (double) exp / expNeeded : 0.0;
+                TextColor textColor = getTextColorForProgress(progress);
+
                 Component enchantLine = Component.text()
-                    .append(enchant.displayName(level))
+                    .append(enchant.displayName(level).decoration(TextDecoration.ITALIC, false))
                     .append(Component.text(" "))
-                    .append(Component.text(bar, EXP_BAR_FILL))
-                    .append(Component.text(" " + exp + "/" + expNeeded, EXP_TEXT_COLOR))
+                    .append(barComponents)
+                    .append(Component.text(" " + exp + "/" + expNeeded, textColor))
                     .color(ENCHANT_COLOR)
+                    .decoration(TextDecoration.ITALIC, false)
                     .build();
                 lore.add(enchantLine);
             } else if (level >= maxLevel) {
-                /* 满级显示 */
+                /* 满级显示 - [MAX] 使用幻变色（彩虹） */
                 Component maxLine = Component.text()
-                    .append(enchant.displayName(level))
+                    .append(enchant.displayName(level).decoration(TextDecoration.ITALIC, false))
                     .append(Component.text(" "))
-                    .append(Component.text("[MAX]", MAX_LEVEL_COLOR))
+                    .append(Component.text("[MAX]", effectiveMaxColor))
                     .color(ENCHANT_COLOR)
+                    .decoration(TextDecoration.ITALIC, false)
                     .build();
                 lore.add(maxLine);
             } else {
                 /* 无经验数据时只显示附魔名 */
                 Component enchantLine = Component.text()
-                    .append(enchant.displayName(level))
+                    .append(enchant.displayName(level).decoration(TextDecoration.ITALIC, false))
                     .color(ENCHANT_COLOR)
+                    .decoration(TextDecoration.ITALIC, false)
                     .build();
                 lore.add(enchantLine);
             }
@@ -426,5 +449,72 @@ public class EnchantmentLevelManager {
         }
         bar.append("]");
         return bar.toString();
+    }
+
+    /**
+     * 构建经验条 Component 列表（逐格变色）
+     * 格式: [████████░░] - 每个方块使用渐变色
+     *
+     * @param current 当前经验
+     * @param needed  所需经验
+     * @return 经验条 Component 列表
+     */
+    private List<Component> buildExpBarComponents(int current, int needed) {
+        int barLength = config.getExpBarLength();
+        if (needed <= 0) needed = 1;
+
+        double progress = (double) current / needed;
+        int filledCount = (int) (progress * barLength);
+        filledCount = Math.max(0, Math.min(filledCount, barLength));
+
+        List<Component> components = new ArrayList<>();
+        components.add(Component.text("[")
+            .decoration(TextDecoration.ITALIC, false));
+
+        /* 获取渐变色列表 */
+        List<TextColor> gradient = config.getBarGradientColors();
+        TextColor emptyColor = config.getEmptyBarColor();
+        int gradientSize = gradient.size();
+
+        /* 填充部分：逐格使用渐变色 */
+        for (int i = 0; i < filledCount; i++) {
+            /* 根据位置选择渐变色：第i格 -> gradient[i * size / barLength] */
+            int colorIndex = Math.min((int) ((long) i * gradientSize / barLength), gradientSize - 1);
+            TextColor color = gradient.get(colorIndex);
+            components.add(Component.text(BAR_FILL, color)
+                .decoration(TextDecoration.ITALIC, false));
+        }
+
+        /* 空格部分 */
+        for (int i = filledCount; i < barLength; i++) {
+            components.add(Component.text(BAR_EMPTY, emptyColor)
+                .decoration(TextDecoration.ITALIC, false));
+        }
+
+        components.add(Component.text("]")
+            .decoration(TextDecoration.ITALIC, false));
+        return components;
+    }
+
+    /**
+     * 根据进度计算经验数字的颜色
+     *
+     * @param progress 进度（0.0-1.0）
+     * @return 对应的 TextColor
+     */
+    private TextColor getTextColorForProgress(double progress) {
+        return config.getTextColorForProgress(progress);
+    }
+
+    /**
+     * 随机生成一个鲜艳的颜色（用于 [MAX] 文字）
+     * 使用 HSB 色相随机，饱和度和亮度固定保证色彩鲜艳
+     *
+     * @return 随机 TextColor
+     */
+    public static TextColor getRandomMaxColor() {
+        float hue = (float) Math.random();
+        int rgb = java.awt.Color.HSBtoRGB(hue, 0.9f, 1.0f);
+        return TextColor.color(rgb);
     }
 }

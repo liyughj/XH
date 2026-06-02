@@ -7,6 +7,7 @@ import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketContainer;
 import com.comphenix.protocol.events.PacketEvent;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
@@ -37,6 +38,9 @@ public class EnchantmentLevelDisplay implements Listener {
 
     /* 开启了经验显示模式的玩家 */
     private final Set<UUID> xpModePlayers = new HashSet<>();
+
+    /* 每个玩家对应的满级 [MAX] 随机色（每次开启 XP 模式时随机一个） */
+    private final Map<UUID, TextColor> playerMaxColors = new HashMap<>();
 
     /**
      * 构造函数
@@ -73,9 +77,9 @@ public class EnchantmentLevelDisplay implements Listener {
                 PacketType type = event.getPacketType();
 
                 if (type == PacketType.Play.Server.WINDOW_ITEMS) {
-                    handleWindowItems(packet);
+                    handleWindowItems(player, packet);
                 } else if (type == PacketType.Play.Server.SET_SLOT) {
-                    handleSetSlot(packet);
+                    handleSetSlot(player, packet);
                 }
             }
         });
@@ -84,13 +88,14 @@ public class EnchantmentLevelDisplay implements Listener {
     /**
      * 处理 WINDOW_ITEMS 数据包
      */
-    private void handleWindowItems(PacketContainer packet) {
+    private void handleWindowItems(Player player, PacketContainer packet) {
         List<ItemStack> items = packet.getItemListModifier().read(0);
         List<ItemStack> modified = new ArrayList<>();
+        TextColor maxColor = playerMaxColors.get(player.getUniqueId());
 
         for (int i = 0; i < items.size(); i++) {
             ItemStack item = items.get(i);
-            ItemStack modifiedItem = modifyItemLore(item);
+            ItemStack modifiedItem = modifyItemLore(item, maxColor);
             if (modifiedItem != null) {
                 modified.add(modifiedItem);
             } else {
@@ -105,9 +110,10 @@ public class EnchantmentLevelDisplay implements Listener {
     /**
      * 处理 SET_SLOT 数据包
      */
-    private void handleSetSlot(PacketContainer packet) {
+    private void handleSetSlot(Player player, PacketContainer packet) {
         ItemStack item = packet.getItemModifier().read(0);
-        ItemStack modified = modifyItemLore(item);
+        TextColor maxColor = playerMaxColors.get(player.getUniqueId());
+        ItemStack modified = modifyItemLore(item, maxColor);
         if (modified != null) {
             packet.getItemModifier().write(0, modified);
         }
@@ -116,10 +122,11 @@ public class EnchantmentLevelDisplay implements Listener {
     /**
      * 修改物品Lore（注入附魔经验进度）
      *
-     * @param item 原始物品
+     * @param item     原始物品
+     * @param maxColor 玩家当前 [MAX] 颜色，可为 null
      * @return 修改后的物品（克隆），如果不需要修改则返回null
      */
-    private ItemStack modifyItemLore(ItemStack item) {
+    private ItemStack modifyItemLore(ItemStack item, TextColor maxColor) {
         if (item == null || item.getType().isAir() || !item.hasItemMeta()) {
             return null;
         }
@@ -141,7 +148,7 @@ public class EnchantmentLevelDisplay implements Listener {
         List<Component> originalLore = meta.lore();
 
         /* 获取附魔经验Lore */
-        List<Component> expLore = manager.getDisplayLoreComponents(item);
+        List<Component> expLore = manager.getDisplayLoreComponents(item, maxColor);
         if (expLore.isEmpty()) {
             return null;
         }
@@ -192,8 +199,11 @@ public class EnchantmentLevelDisplay implements Listener {
     public void setXpMode(Player player, boolean on) {
         if (on) {
             xpModePlayers.add(player.getUniqueId());
+            /* 每次开启 XP 模式时，随机生成一个 [MAX] 文字颜色，整局固定不变 */
+            playerMaxColors.put(player.getUniqueId(), EnchantmentLevelManager.getRandomMaxColor());
         } else {
             xpModePlayers.remove(player.getUniqueId());
+            playerMaxColors.remove(player.getUniqueId());
         }
         /* 延迟一 tick 刷新，确保模式切换完成后再发包 */
         Bukkit.getScheduler().runTaskLater(plugin, () -> refreshInventory(player), 1L);
@@ -223,6 +233,7 @@ public class EnchantmentLevelDisplay implements Listener {
             /* 构建物品列表 */
             List<ItemStack> items = new ArrayList<>();
             int slotCount = view.countSlots();
+            TextColor maxColor = playerMaxColors.get(player.getUniqueId());
 
             for (int i = 0; i < slotCount; i++) {
                 ItemStack item = view.getItem(i);
@@ -231,7 +242,7 @@ public class EnchantmentLevelDisplay implements Listener {
                 } else {
                     /* 如果是经验模式，应用修改；否则发送原始物品 */
                     if (isXpMode(player)) {
-                        ItemStack modified = modifyItemLore(item);
+                        ItemStack modified = modifyItemLore(item, maxColor);
                         items.add(modified != null ? modified : item);
                     } else {
                         /* 正常模式：发送干净的物品（移除HIDE_ENCHANTS） */

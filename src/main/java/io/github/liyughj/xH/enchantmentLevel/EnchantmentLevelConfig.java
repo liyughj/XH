@@ -1,5 +1,6 @@
 package io.github.liyughj.xH.enchantmentLevel;
 
+import net.kyori.adventure.text.format.TextColor;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -24,10 +25,28 @@ public class EnchantmentLevelConfig {
     private static final int DEFAULT_ABSOLUTE_MAX = 100;
     private static final boolean DEFAULT_RESPECT_VANILLA_MAX = false;
     private static final int DEFAULT_EXP_BAR_LENGTH = 10;
-    private static final boolean DEFAULT_SHOW_ON_SHIFT = true;
     private static final boolean DEFAULT_AUTO_INIT = true;
     private static final double DEFAULT_MULTIPLIER_VAL = 1.0;
     private static final boolean DEFAULT_EFFECTS_ENABLED = true;
+
+    /* 默认经验条渐变色（从左到右：红→橙→黄→绿） */
+    private static final List<String> DEFAULT_BAR_GRADIENT = Arrays.asList(
+        "#FF5555",  // 红
+        "#FFAA00",  // 橙
+        "#FFFF55",  // 黄
+        "#55FF55"   // 绿
+    );
+
+    /* 默认经验条空格颜色（深灰） */
+    private static final String DEFAULT_BAR_EMPTY_COLOR = "#333333";
+
+    /* 默认经验数字分档颜色（按进度从低到高） */
+    private static final List<String[]> DEFAULT_TEXT_COLOR_TIERS = Arrays.asList(
+        new String[]{"0.0", "#FF5555"},   // 0-33%: 红
+        new String[]{"0.34", "#FFAA00"},  // 34-65%: 橙
+        new String[]{"0.66", "#FFFF55"},  // 66-99%: 黄
+        new String[]{"1.0", "#55FF55"}    // 100%: 绿
+    );
 
     /* 配置文件名 */
     private static final String CONFIG_FILE_NAME = "enchantmentLevel.yml";
@@ -47,9 +66,14 @@ public class EnchantmentLevelConfig {
     private static final String KEY_DAMAGE_MULTIPLIER = "damage-exp-multiplier";
     private static final String KEY_DISPLAY = "display";
     private static final String KEY_FORMAT = "format";
-    private static final String KEY_SHOW_ON_SHIFT = "show-when-shift-only";
     private static final String KEY_EXP_BAR_LENGTH = "exp-bar-length";
     private static final String KEY_AUTO_INITIALIZE = "auto-initialize";
+    private static final String KEY_EXP_BAR_COLORS = "exp-bar-colors";
+    private static final String KEY_BAR_GRADIENT = "bar-gradient";
+    private static final String KEY_BAR_EMPTY_COLOR = "bar-empty-color";
+    private static final String KEY_TEXT_COLOR_TIERS = "text-color-tiers";
+    private static final String KEY_THRESHOLD = "threshold";
+    private static final String KEY_COLOR = "color";
     private static final String KEY_UPGRADE_EFFECTS = "upgrade-effects";
     private static final String KEY_EFFECTS_ENABLED = "enabled";
 
@@ -85,8 +109,15 @@ public class EnchantmentLevelConfig {
     private double damageExpMultiplier;
 
     /* 显示设置 */
-    private boolean showOnShiftOnly;
     private int expBarLength;
+
+    /* 经验条颜色设置 */
+    /* 经验条填充渐变色（从左到右） */
+    private List<TextColor> barGradientColors;
+    /* 经验条空格颜色 */
+    private TextColor emptyBarColor;
+    /* 经验数字分档颜色：进度阈值(0.0-1.0) -> 颜色 */
+    private final List<Map.Entry<Double, TextColor>> textColorTiers = new ArrayList<>();
 
     /* 其他 */
     private boolean autoInitialize;
@@ -189,6 +220,20 @@ public class EnchantmentLevelConfig {
         defaultConfig.set(KEY_DISPLAY + "." + KEY_FORMAT + "." + KEY_EXP_BAR_LENGTH, DEFAULT_EXP_BAR_LENGTH);
         defaultConfig.set(KEY_DISPLAY + "." + KEY_AUTO_INITIALIZE, DEFAULT_AUTO_INIT);
 
+        /* 经验条颜色设置 */
+        defaultConfig.set(KEY_DISPLAY + "." + KEY_EXP_BAR_COLORS + "." + KEY_BAR_EMPTY_COLOR, DEFAULT_BAR_EMPTY_COLOR);
+        /* 经验条填充渐变色（从左到右） */
+        defaultConfig.set(KEY_DISPLAY + "." + KEY_EXP_BAR_COLORS + "." + KEY_BAR_GRADIENT, DEFAULT_BAR_GRADIENT);
+        /* 经验数字分档颜色（按进度从低到高） */
+        List<String> tierThresholds = new ArrayList<>();
+        List<String> tierColors = new ArrayList<>();
+        for (String[] tier : DEFAULT_TEXT_COLOR_TIERS) {
+            tierThresholds.add(tier[0]);
+            tierColors.add(tier[1]);
+        }
+        defaultConfig.set(KEY_DISPLAY + "." + KEY_EXP_BAR_COLORS + "." + KEY_TEXT_COLOR_TIERS + "." + KEY_THRESHOLD, tierThresholds);
+        defaultConfig.set(KEY_DISPLAY + "." + KEY_EXP_BAR_COLORS + "." + KEY_TEXT_COLOR_TIERS + "." + KEY_COLOR, tierColors);
+
         /* 升级特效 */
         defaultConfig.set(KEY_UPGRADE_EFFECTS + "." + KEY_EFFECTS_ENABLED, DEFAULT_EFFECTS_ENABLED);
 
@@ -214,6 +259,12 @@ public class EnchantmentLevelConfig {
             "display: 显示设置",
             "  format.exp-bar-length: 经验条长度",
             "  auto-initialize: 获得附魔时自动初始化经验数据",
+            "  exp-bar-colors: 经验条颜色设置",
+            "    bar-gradient: 经验条填充渐变色（从左到右逐格变色）",
+            "    bar-empty-color: 经验条空格颜色",
+            "    text-color-tiers: 经验数字分档颜色（按进度切换）",
+            "      threshold: 进度阈值（0.0-1.0，按从小到大排序）",
+            "      color: 对应阈值的颜色",
             "upgrade-effects: 升级特效设置",
             "",
             "指令切换显示模式:",
@@ -275,8 +326,106 @@ public class EnchantmentLevelConfig {
 
     private void loadDisplay() {
         String path = KEY_DISPLAY;
-        this.showOnShiftOnly = config.getBoolean(path + "." + KEY_FORMAT + "." + KEY_SHOW_ON_SHIFT, DEFAULT_SHOW_ON_SHIFT);
         this.expBarLength = config.getInt(path + "." + KEY_FORMAT + "." + KEY_EXP_BAR_LENGTH, DEFAULT_EXP_BAR_LENGTH);
+        loadBarColors();
+    }
+
+    /**
+     * 加载经验条颜色配置
+     */
+    private void loadBarColors() {
+        String path = KEY_DISPLAY + "." + KEY_EXP_BAR_COLORS;
+
+        /* 加载经验条空格颜色 */
+        String emptyColorStr = config.getString(path + "." + KEY_BAR_EMPTY_COLOR, DEFAULT_BAR_EMPTY_COLOR);
+        this.emptyBarColor = parseColor(emptyColorStr);
+        if (this.emptyBarColor == null) {
+            plugin.getLogger().warning("bar-empty-color 值无效: " + emptyColorStr + "，使用默认值: " + DEFAULT_BAR_EMPTY_COLOR);
+            this.emptyBarColor = parseColor(DEFAULT_BAR_EMPTY_COLOR);
+        }
+
+        /* 加载经验条填充渐变色 */
+        this.barGradientColors = new ArrayList<>();
+        List<String> gradientList = config.getStringList(path + "." + KEY_BAR_GRADIENT);
+        if (gradientList.isEmpty()) {
+            gradientList = DEFAULT_BAR_GRADIENT;
+        }
+        for (String colorStr : gradientList) {
+            TextColor color = parseColor(colorStr);
+            if (color != null) {
+                this.barGradientColors.add(color);
+            }
+        }
+        /* 至少保证有一个颜色 */
+        if (this.barGradientColors.isEmpty()) {
+            this.barGradientColors.add(parseColor("#55FF55"));
+        }
+
+        /* 加载经验数字分档颜色 */
+        this.textColorTiers.clear();
+        List<String> thresholds = config.getStringList(path + "." + KEY_TEXT_COLOR_TIERS + "." + KEY_THRESHOLD);
+        List<String> colors = config.getStringList(path + "." + KEY_TEXT_COLOR_TIERS + "." + KEY_COLOR);
+        int count = Math.min(thresholds.size(), colors.size());
+        for (int i = 0; i < count; i++) {
+            try {
+                double threshold = Double.parseDouble(thresholds.get(i));
+                TextColor color = parseColor(colors.get(i));
+                if (color != null && threshold >= 0.0 && threshold <= 1.0) {
+                    this.textColorTiers.add(new AbstractMap.SimpleEntry<>(threshold, color));
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        /* 如果未配置或配置无效，使用默认值 */
+        if (this.textColorTiers.isEmpty()) {
+            for (String[] tier : DEFAULT_TEXT_COLOR_TIERS) {
+                double threshold = Double.parseDouble(tier[0]);
+                TextColor color = parseColor(tier[1]);
+                this.textColorTiers.add(new AbstractMap.SimpleEntry<>(threshold, color));
+            }
+        } else {
+            /* 按阈值升序排序 */
+            this.textColorTiers.sort(Comparator.comparingDouble(Map.Entry::getKey));
+        }
+    }
+
+    /**
+     * 解析颜色字符串（支持 #RRGGBB 格式）
+     *
+     * @param colorStr 颜色字符串
+     * @return TextColor，解析失败返回 null
+     */
+    private TextColor parseColor(String colorStr) {
+        if (colorStr == null) return null;
+        String s = colorStr.trim();
+        if (s.startsWith("#")) s = s.substring(1);
+        try {
+            int rgb = Integer.parseInt(s, 16);
+            return TextColor.color(rgb);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 根据进度获取经验数字的颜色
+     *
+     * @param progress 进度（0.0-1.0）
+     * @return 对应的 TextColor
+     */
+    public TextColor getTextColorForProgress(double progress) {
+        if (textColorTiers.isEmpty()) {
+            return TextColor.color(0x888888);
+        }
+        TextColor result = textColorTiers.get(0).getValue();
+        for (Map.Entry<Double, TextColor> entry : textColorTiers) {
+            if (progress >= entry.getKey()) {
+                result = entry.getValue();
+            } else {
+                break;
+            }
+        }
+        return result;
     }
 
     private void loadUpgradeEffects() {
@@ -377,12 +526,16 @@ public class EnchantmentLevelConfig {
         return damageExpMultiplier;
     }
 
-    public boolean isShowOnShiftOnly() {
-        return showOnShiftOnly;
-    }
-
     public int getExpBarLength() {
         return expBarLength;
+    }
+
+    public List<TextColor> getBarGradientColors() {
+        return barGradientColors;
+    }
+
+    public TextColor getEmptyBarColor() {
+        return emptyBarColor;
     }
 
     public boolean isEffectsEnabled() {
