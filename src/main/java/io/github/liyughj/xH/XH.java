@@ -24,11 +24,17 @@ public final class XH extends JavaPlugin {
     /* 铁砧配置管理器 */
     private AnvilConfig anvilConfig;
 
+    /* 铁砧数据包监听器 */
+    private AnvilPacketListener anvilPacketListener;
+
     /* 附魔经验显示管理器 */
     private EnchantmentLevelDisplay enchantmentLevelDisplay;
 
     @Override
     public void onEnable() {
+        /* 初始化附魔经验数据 PDC 存储系统 */
+        EnchantmentLevelData.init(this);
+
         /* 初始化附魔台配置（使用 enchantingTable.yml） */
         this.enchantingTableConfig = new EnchantingTableConfig(this);
 
@@ -72,7 +78,7 @@ public final class XH extends JavaPlugin {
 
         /* 注册铁砧数据包监听器（ProtocolLib） */
         /* 修复铁砧"过于昂贵"显示问题，允许超过40级的经验成本 */
-        new AnvilPacketListener(this, anvilConfig.getMaxRepairCost());
+        this.anvilPacketListener = new AnvilPacketListener(this, anvilConfig.getMaxRepairCost());
 
         /* ========== 附魔升级系统 ========== */
 
@@ -92,7 +98,7 @@ public final class XH extends JavaPlugin {
             );
 
             /* 注册附魔经验显示（含ProtocolLib数据包监听器） */
-            this.enchantmentLevelDisplay = new EnchantmentLevelDisplay(this, levelManager, levelConfig);
+            this.enchantmentLevelDisplay = new EnchantmentLevelDisplay(this, levelManager);
             getServer().getPluginManager().registerEvents(enchantmentLevelDisplay, this);
 
             getLogger().info("附魔升级系统已启用");
@@ -113,6 +119,11 @@ public final class XH extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        /* 清理铁砧数据包监听器 */
+        if (anvilPacketListener != null) {
+            anvilPacketListener.shutdown();
+        }
+
         /* 清理附魔经验显示资源（内存清理、数据包监听器注销） */
         if (enchantmentLevelDisplay != null) {
             enchantmentLevelDisplay.shutdown();

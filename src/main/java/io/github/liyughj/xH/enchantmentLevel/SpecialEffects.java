@@ -67,12 +67,12 @@ public class SpecialEffects {
     }
 
     /**
-     * 获取单例实例
+     * 获取单例实例（线程安全）
      *
      * @param plugin 插件主类实例
      * @return 配置实例
      */
-    public static SpecialEffects getInstance(JavaPlugin plugin) {
+    public static synchronized SpecialEffects getInstance(JavaPlugin plugin) {
         if (instance == null) {
             instance = new SpecialEffects(plugin);
         }

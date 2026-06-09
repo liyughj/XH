@@ -21,7 +21,18 @@ public class EnchantmentLevelData {
     /* PDC 容器命名空间 */
     private static final String NAMESPACE = "xh_data";
 
-    /* 默认值 */
+    /* 静态插件引用（在插件启用时通过 init() 设置） */
+    private static JavaPlugin plugin;
+
+    /**
+     * 初始化静态插件引用
+     * 必须在插件 onEnable 时调用一次
+     *
+     * @param javaPlugin 插件实例
+     */
+    public static void init(JavaPlugin javaPlugin) {
+        plugin = javaPlugin;
+    }
     private static final int DEFAULT_LEVEL = 1;
     private static final int DEFAULT_EXP = 0;
 
@@ -105,12 +116,9 @@ public class EnchantmentLevelData {
      * @param dataMap   附魔到经验数据的映射
      */
     public static void saveToItem(ItemStack item, Map<Enchantment, EnchantmentLevelData> dataMap) {
-        if (item == null || !item.hasItemMeta()) return;
+        if (item == null || !item.hasItemMeta() || plugin == null) return;
 
         ItemMeta meta = item.getItemMeta();
-        JavaPlugin plugin = EnchantmentLevelConfig.getInstance() != null ?
-            JavaPlugin.getProvidingPlugin(EnchantmentLevelConfig.class) : null;
-        if (plugin == null) return;
 
         for (Map.Entry<Enchantment, EnchantmentLevelData> entry : dataMap.entrySet()) {
             saveSingleToItem(plugin, meta, entry.getKey(), entry.getValue());
@@ -130,13 +138,9 @@ public class EnchantmentLevelData {
         /* 使用 LinkedHashMap 保持顺序 */
         Map<Enchantment, EnchantmentLevelData> result = new LinkedHashMap<>();
 
-        if (item == null || !item.hasItemMeta()) return result;
+        if (item == null || !item.hasItemMeta() || plugin == null) return result;
 
         ItemMeta meta = item.getItemMeta();
-        JavaPlugin plugin = EnchantmentLevelConfig.getInstance() != null ?
-            JavaPlugin.getProvidingPlugin(EnchantmentLevelConfig.class) : null;
-        if (plugin == null) return result;
-
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
 
         /* 直接从 ItemMeta 获取附魔，保持原版顺序 */

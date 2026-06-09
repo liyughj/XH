@@ -83,7 +83,7 @@ public class EnchantmentLevelListener implements Listener {
         /* 检查攻击者是否为玩家 */
         if (!(event.getDamager() instanceof Player player)) return;
         /* 检查目标是否为生物 */
-        if (!(event.getEntity() instanceof LivingEntity target)) return;
+        if (!(event.getEntity() instanceof LivingEntity)) return;
 
         /* 获取主手武器 */
         ItemStack weapon = player.getInventory().getItemInMainHand();
@@ -121,7 +121,7 @@ public class EnchantmentLevelListener implements Listener {
         /* 检查射击者是否为玩家 */
         if (!(arrow.getShooter() instanceof Player player)) return;
         /* 检查命中目标是否为生物 */
-        if (!(event.getHitEntity() instanceof LivingEntity target)) return;
+        if (!(event.getHitEntity() instanceof LivingEntity)) return;
 
         /* 获取主手武器 */
         ItemStack bow = player.getInventory().getItemInMainHand();
@@ -193,6 +193,8 @@ public class EnchantmentLevelListener implements Listener {
 
     /**
      * 附魔台附魔时自动初始化经验数据
+     * 注意：EnchantingLevelListener（优先级 HIGH）会在本监听器之前执行，
+     * 将附魔强制设为 I 级，因此本监听器初始化时等级已为 1 级。
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEnchantItem(EnchantItemEvent event) {

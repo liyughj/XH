@@ -1,7 +1,6 @@
 package io.github.liyughj.xH.enchantmentLevel;
 
 import net.kyori.adventure.text.format.TextColor;
-import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.enchantments.Enchantment;
@@ -22,8 +21,6 @@ public class EnchantmentLevelConfig {
     private static final int DEFAULT_BASE_EXP = 100;
     private static final double DEFAULT_MULTIPLIER = 2.0;
     private static final int DEFAULT_INCREMENT = 50;
-    private static final int DEFAULT_ABSOLUTE_MAX = 100;
-    private static final boolean DEFAULT_RESPECT_VANILLA_MAX = false;
     private static final int DEFAULT_EXP_BAR_LENGTH = 10;
     private static final boolean DEFAULT_AUTO_INIT = true;
     private static final double DEFAULT_MULTIPLIER_VAL = 1.0;
@@ -137,12 +134,12 @@ public class EnchantmentLevelConfig {
     }
 
     /**
-     * 获取单例实例
+     * 获取单例实例（线程安全）
      *
      * @param plugin 插件主类实例
      * @return 配置实例
      */
-    public static EnchantmentLevelConfig getInstance(JavaPlugin plugin) {
+    public static synchronized EnchantmentLevelConfig getInstance(JavaPlugin plugin) {
         if (instance == null) {
             instance = new EnchantmentLevelConfig(plugin);
         }

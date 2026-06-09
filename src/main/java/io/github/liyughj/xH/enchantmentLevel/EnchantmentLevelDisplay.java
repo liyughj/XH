@@ -33,7 +33,6 @@ public class EnchantmentLevelDisplay implements Listener {
 
     private final JavaPlugin plugin;
     private final EnchantmentLevelManager manager;
-    private final EnchantmentLevelConfig config;
     private final ProtocolManager protocolManager;
 
     /* 开启了经验显示模式的玩家 */
@@ -47,12 +46,10 @@ public class EnchantmentLevelDisplay implements Listener {
      *
      * @param plugin  插件实例
      * @param manager 经验管理器
-     * @param config  配置实例
      */
-    public EnchantmentLevelDisplay(JavaPlugin plugin, EnchantmentLevelManager manager, EnchantmentLevelConfig config) {
+    public EnchantmentLevelDisplay(JavaPlugin plugin, EnchantmentLevelManager manager) {
         this.plugin = plugin;
         this.manager = manager;
-        this.config = config;
         this.protocolManager = ProtocolLibrary.getProtocolManager();
         registerPacketListener();
     }

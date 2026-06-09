@@ -476,13 +476,62 @@ public class EnchantmentLevelManager {
 
     /**
      * 随机生成一个鲜艳的颜色（用于 [MAX] 文字）
-     * 使用 HSB 色相随机，饱和度和亮度固定保证色彩鲜艳
+     * 使用 HSB 色相随机，纯 Java 计算避免 AWT 依赖
      *
      * @return 随机 TextColor
      */
     public static TextColor getRandomMaxColor() {
         float hue = (float) Math.random();
-        int rgb = java.awt.Color.HSBtoRGB(hue, 0.9f, 1.0f);
+        int rgb = hsbToRgb(hue, 0.9f, 1.0f);
         return TextColor.color(rgb);
+    }
+
+    /**
+     * HSB/HSV 转 RGB 整数（纯 Java 实现，避免 AWT 依赖）
+     */
+    private static int hsbToRgb(float hue, float saturation, float brightness) {
+        int r = 0, g = 0, b = 0;
+        if (saturation == 0) {
+            r = g = b = (int) (brightness * 255.0f + 0.5f);
+        } else {
+            float h = (hue - (float) Math.floor(hue)) * 6.0f;
+            float f = h - (float) Math.floor(h);
+            float p = brightness * (1.0f - saturation);
+            float q = brightness * (1.0f - saturation * f);
+            float t = brightness * (1.0f - (saturation * (1.0f - f)));
+            switch ((int) h) {
+                case 0:
+                    r = (int) (brightness * 255.0f + 0.5f);
+                    g = (int) (t * 255.0f + 0.5f);
+                    b = (int) (p * 255.0f + 0.5f);
+                    break;
+                case 1:
+                    r = (int) (q * 255.0f + 0.5f);
+                    g = (int) (brightness * 255.0f + 0.5f);
+                    b = (int) (p * 255.0f + 0.5f);
+                    break;
+                case 2:
+                    r = (int) (p * 255.0f + 0.5f);
+                    g = (int) (brightness * 255.0f + 0.5f);
+                    b = (int) (t * 255.0f + 0.5f);
+                    break;
+                case 3:
+                    r = (int) (p * 255.0f + 0.5f);
+                    g = (int) (q * 255.0f + 0.5f);
+                    b = (int) (brightness * 255.0f + 0.5f);
+                    break;
+                case 4:
+                    r = (int) (t * 255.0f + 0.5f);
+                    g = (int) (p * 255.0f + 0.5f);
+                    b = (int) (brightness * 255.0f + 0.5f);
+                    break;
+                case 5:
+                    r = (int) (brightness * 255.0f + 0.5f);
+                    g = (int) (p * 255.0f + 0.5f);
+                    b = (int) (q * 255.0f + 0.5f);
+                    break;
+            }
+        }
+        return (r << 16) | (g << 8) | b;
     }
 }

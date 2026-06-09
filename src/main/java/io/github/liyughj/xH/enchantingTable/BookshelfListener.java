@@ -25,6 +25,7 @@ public class BookshelfListener implements Listener {
 
     /**
      * 监听书架放置事件
+     * 当前为扩展点，未来可添加缓存刷新机制
      *
      * @param event 方块放置事件
      */
@@ -33,12 +34,12 @@ public class BookshelfListener implements Listener {
         if (event.getBlock().getType() != Material.BOOKSHELF) {
             return;
         }
-        /* 触发附近附魔台缓存刷新（当前为占位逻辑，预留给未来缓存优化） */
-        notifyNearbyEnchantingTables(event.getBlock().getLocation());
+        /* 预留：未来可在此处触发附近附魔台缓存刷新 */
     }
 
     /**
      * 监听书架破坏事件
+     * 当前为扩展点，未来可添加缓存刷新机制
      *
      * @param event 方块破坏事件
      */
@@ -47,30 +48,16 @@ public class BookshelfListener implements Listener {
         if (event.getBlock().getType() != Material.BOOKSHELF) {
             return;
         }
-        /* 触发附近附魔台缓存刷新（当前为占位逻辑，预留给未来缓存优化） */
-        notifyNearbyEnchantingTables(event.getBlock().getLocation());
+        /* 预留：未来可在此处触发附近附魔台缓存刷新 */
     }
 
     /**
-     * 通知附近的附魔台进行状态更新
-     * 当前实现仅做扫描，未使用计算结果；保留作为未来缓存机制的扩展点
-     *
-     * @param center 中心位置（书架位置）
-     */
-    private void notifyNearbyEnchantingTables(Location center) {
-        /* 仅在需要时进行扫描，避免不必要的性能开销 */
-        for (Location tableLoc : findNearbyEnchantingTables(center)) {
-            /* 预留给未来缓存机制使用 */
-        }
-    }
-
-    /**
-     * 查找指定位置附近的所有附魔台
+     * 查找指定位置附近的所有附魔台（工具方法，供未来缓存机制使用）
      *
      * @param center 中心位置（书架位置）
      * @return 附近附魔台位置的集合
      */
-    private Set<Location> findNearbyEnchantingTables(Location center) {
+    public static Set<Location> findNearbyEnchantingTables(Location center) {
         Set<Location> enchantingTables = new HashSet<>();
 
         for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {

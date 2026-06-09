@@ -20,13 +20,20 @@ public class AnvilPacketListener {
 
     private final int maxRepairCost;
 
+    /* ProtocolLib 的 ProtocolManager */
+    private ProtocolManager protocolManager;
+    /* 插件实例（用于注销监听器） */
+    private final Plugin plugin;
+
     /**
      * 构造函数
      * @param plugin 插件实例
      * @param maxRepairCost 最大修复成本（用于修复"过于昂贵"显示）
      */
     public AnvilPacketListener(Plugin plugin, int maxRepairCost) {
+        this.plugin = plugin;
         this.maxRepairCost = maxRepairCost;
+        this.protocolManager = ProtocolLibrary.getProtocolManager();
         registerPacketListener(plugin);
     }
 
@@ -43,9 +50,6 @@ public class AnvilPacketListener {
         }
 
         try {
-            /* 获取 ProtocolLib 的 ProtocolManager */
-            ProtocolManager protocolManager = ProtocolLibrary.getProtocolManager();
-
             /* 注册数据包监听器，监听服务器发送给客户端的 Window Data 数据包 */
             protocolManager.addPacketListener(new PacketAdapter(
                     plugin,
@@ -102,6 +106,16 @@ public class AnvilPacketListener {
             return Bukkit.getPluginManager().getPlugin("ProtocolLib") != null;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    /**
+     * 插件禁用时清理数据包监听器
+     * 防止重载时监听器泄漏
+     */
+    public void shutdown() {
+        if (protocolManager != null && plugin != null) {
+            protocolManager.removePacketListeners(plugin);
         }
     }
 }
