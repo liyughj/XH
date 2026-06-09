@@ -478,17 +478,25 @@ public class EnchantmentLevelConfig {
      * @return 最高等级（0表示使用原版最高等级）
      */
     public int getMaxLevel(Enchantment enchant) {
-        String key = enchantKey(enchant);
-        Integer configMax = maxLevels.get(key);
+        return getMaxLevel(enchantKey(enchant), enchant.getMaxLevel());
+    }
+
+    /**
+     * 获取指定附魔的最高等级（按 key 查询）
+     * @param key            附魔 key（大写，如 "SHARPNESS"）
+     * @param vanillaDefault 原版默认最高等级（用于回退）
+     * @return 最高等级（0表示使用原版最高等级）
+     */
+    public int getMaxLevel(String key, int vanillaDefault) {
+        String normalizedKey = key.toUpperCase();
+        Integer configMax = maxLevels.get(normalizedKey);
         if (configMax != null) {
-            /* 0表示使用原版最高等级 */
             if (configMax == 0) {
-                return enchant.getMaxLevel();
+                return vanillaDefault;
             }
             return configMax;
         }
-        /* 未配置则使用原版最高等级 */
-        return enchant.getMaxLevel();
+        return vanillaDefault;
     }
 
     public boolean isAutoInitialize() {

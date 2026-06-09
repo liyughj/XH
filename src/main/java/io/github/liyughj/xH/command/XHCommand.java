@@ -86,6 +86,11 @@ public class XHCommand implements CommandExecutor {
                 effects.reload();
             }
 
+            /* 重载附魔等级效果配置 */
+            if (plugin.getLevelConfig() != null) {
+                plugin.getLevelConfig().reload();
+            }
+
             sender.sendMessage("§aXH 插件配置重载完成！");
             plugin.getLogger().info("配置已通过命令重载 - 操作者: " + sender.getName());
         } catch (Exception e) {

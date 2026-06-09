@@ -28,6 +28,9 @@ public class EnchantmentLevelManager {
     private static final TextColor ENCHANT_COLOR = TextColor.color(0xAAAAAA);
     private static final TextColor MAX_LEVEL_COLOR = TextColor.color(0xFFAA00);
 
+    /* 硬锁：所有附魔最高等级上限 */
+    private static final int HARD_MAX_LEVEL = 10;
+
     private final EnchantmentLevelConfig config;
 
     /**
@@ -98,13 +101,15 @@ public class EnchantmentLevelManager {
     }
 
     /**
-     * 获取附魔的最大等级
+     * 获取附魔的最大等级（硬锁上限10级）
+     * 即使配置文件设置更高的值，实际游戏内也不会超过10级
      *
      * @param enchant 附魔类型
-     * @return 最大等级（从配置读取，0表示原版最高等级）
+     * @return 最大等级（不超过 HARD_MAX_LEVEL）
      */
     public int getMaxLevel(Enchantment enchant) {
-        return config.getMaxLevel(enchant);
+        int configMax = config.getMaxLevel(enchant);
+        return Math.min(configMax, HARD_MAX_LEVEL);
     }
 
     /**

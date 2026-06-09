@@ -5,6 +5,9 @@ import io.github.liyughj.xH.anvil.AnvilListener;
 import io.github.liyughj.xH.anvil.AnvilPacketListener;
 import io.github.liyughj.xH.command.XHCommand;
 import io.github.liyughj.xH.enchantmentLevel.*;
+import io.github.liyughj.xH.enchantmentLevel.EnchantmentsList.LevelConfig;
+import io.github.liyughj.xH.enchantmentLevel.EnchantmentsList.LevelEffectListener;
+import io.github.liyughj.xH.enchantmentLevel.EnchantmentsList.VanillaEnchantments;
 import io.github.liyughj.xH.enchantingTable.BookshelfListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingItemListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingLevelListener;
@@ -26,6 +29,9 @@ public final class XH extends JavaPlugin {
 
     /* 铁砧数据包监听器 */
     private AnvilPacketListener anvilPacketListener;
+
+    /* 附魔等级效果配置 */
+    private LevelConfig levelConfig;
 
     /* 附魔经验显示管理器 */
     private EnchantmentLevelDisplay enchantmentLevelDisplay;
@@ -82,9 +88,20 @@ public final class XH extends JavaPlugin {
 
         /* ========== 附魔升级系统 ========== */
 
+        /* 初始化附魔等级效果配置（使用 Level.yml） */
+        this.levelConfig = new LevelConfig(this);
+
+        /* 注册附魔等级效果监听器（锋利伤害加成等） */
+        getServer().getPluginManager().registerEvents(
+            new LevelEffectListener(this, levelConfig),
+            this
+        );
+
         /* 初始化附魔升级配置（使用 enchantmentLevel.yml） */
         EnchantmentLevelConfig levelConfig = EnchantmentLevelConfig.getInstance(this);
         if (levelConfig.isEnabled()) {
+            /* 注入配置到附魔清单（供 VanillaEnchantments.getEffectiveMaxLevel() 使用） */
+            VanillaEnchantments.init(levelConfig);
             /* 初始化升级特效配置（使用 specialEffects.yml） */
             SpecialEffects specialEffects = SpecialEffects.getInstance(this);
 
@@ -129,6 +146,15 @@ public final class XH extends JavaPlugin {
             enchantmentLevelDisplay.shutdown();
         }
         getLogger().info("XH插件已禁用！");
+    }
+
+    /**
+     * 获取附魔等级效果配置管理器
+     *
+     * @return 配置管理器实例
+     */
+    public LevelConfig getLevelConfig() {
+        return levelConfig;
     }
 
     /**
