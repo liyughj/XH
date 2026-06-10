@@ -35,6 +35,12 @@ public class LevelConfig {
     private static final double DEFAULT_UNBREAKING_SAVE = 7.5;      // 每级不消耗耐久概率（%）
     private static final double DEFAULT_UNBREAKING_RETURN = 2.5;    // 每级返还耐久概率（%）
     private static final double DEFAULT_UNBREAKING_RETURN_RATE = 50.0; // 每级返还耐久倍率（%）
+    private static final double DEFAULT_MENDING_DURABILITY_PER_XP = 1.0; // 每级每经验修复耐久点数
+    private static final double DEFAULT_PROTECTION_PERCENT = 2.0;    // 每级伤害减免百分比（%）
+    private static final double DEFAULT_THORNS_CHANCE = 2.0;          // 每级荆棘触发概率（%）
+    private static final double DEFAULT_THORNS_DAMAGE = 2.0;          // 每级荆棘反伤百分比（%）
+    private static final double DEFAULT_RESPIRATION_SECONDS = 3.0;    // 每级水下呼吸额外秒数
+    private static final double DEFAULT_AQUA_AFFINITY_CHAIN_PERCENT = 5.0; // 每级恢复链挖掘效能（%）
 
     /* 配置键名 */
     private static final String KEY_DAMAGE_PERCENT = "damage-percent-per-level";
@@ -51,6 +57,12 @@ public class LevelConfig {
     private static final String KEY_UNBREAKING_SAVE = "save-chance-per-level";
     private static final String KEY_UNBREAKING_RETURN = "return-chance-per-level";
     private static final String KEY_UNBREAKING_RETURN_RATE = "return-rate-per-level";
+    private static final String KEY_MENDING_DURABILITY = "mending-durability-per-xp";
+    private static final String KEY_PROTECTION_PERCENT = "protection-percent-per-level";
+    private static final String KEY_THORNS_CHANCE = "thorns-chance-per-level";
+    private static final String KEY_THORNS_DAMAGE = "thorns-damage-per-level";
+    private static final String KEY_RESPIRATION_SECONDS = "respiration-seconds-per-level";
+    private static final String KEY_AQUA_AFFINITY_CHAIN_PERCENT = "aqua-affinity-chain-percent-per-level";
 
     private final JavaPlugin plugin;
     private FileConfiguration config;
@@ -62,14 +74,14 @@ public class LevelConfig {
     /*
      * ==================== 附魔加成覆盖接口 ====================
      * 外部模块（如赛季加成、公会加成等）可以在不修改配置文件的情况下，
-     * 在附魔系统内部叠加额外加成。加成直接加到每级数值上。
+     * 在附魔系统内部叠加额外加成。bonus 是固定值，直接加在最终结果上。
      *
-     * 例如：锋利配置 per-level=10%，外部注入 +5% bonus → 有效 per-level=15%
-     *      锋利 X 最终 = 150% 而非 100%
+     * 例如：锋利配置 per-level=10%，外部注入 +5% bonus
+     *      锋利 X = 100%（per-level × 10）+ 5%（bonus）= 105%
      *
      * 用法：
      *   LevelConfig lc = XH.getInstance().getLevelConfig();
-     *   lc.setBonusDamagePercent("sharpness", 5.0);  // sharpness 每级+5% bonus
+     *   lc.setBonusDamagePercent("sharpness", 5.0);  // sharpness 最终+5%
      */
     private final ConcurrentHashMap<String, Double> bonusOverrides = new ConcurrentHashMap<>();
 
@@ -147,6 +159,51 @@ public class LevelConfig {
         bonusOverrides.put(bonusKey(enchantKey, "unbreaking_return_rate"), bonus);
     }
 
+    /** 经验修补耐久倍率 bonus（耐久/经验） */
+    public void setBonusMendingDurability(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "mending"), bonus);
+    }
+
+    /** 保护伤害减免 bonus（%/全套） */
+    public void setBonusProtectionPercent(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "protection"), bonus);
+    }
+
+    /** 火焰保护燃烧时间减免 bonus（%/全套） */
+    public void setBonusFireTickPercent(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "fire_tick"), bonus);
+    }
+
+    /** 爆炸保护击退减免 bonus（%/全套） */
+    public void setBonusBlastKnockbackPercent(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "blast_knockback"), bonus);
+    }
+
+    /** 弹射物保护击退减免 bonus（%/全套） */
+    public void setBonusProjectileKnockbackPercent(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "projectile_knockback"), bonus);
+    }
+
+    /** 荆棘触发概率 bonus（%/全套） */
+    public void setBonusThornsChance(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "thorns_chance"), bonus);
+    }
+
+    /** 荆棘反伤百分比 bonus（%/全套） */
+    public void setBonusThornsDamage(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "thorns_damage"), bonus);
+    }
+
+    /** 水下呼吸时间 bonus（秒） */
+    public void setBonusRespirationSeconds(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "respiration"), bonus);
+    }
+
+    /** 水下速掘链挖掘效能 bonus（%/全套） */
+    public void setBonusAquaAffinityChainPercent(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "aqua_affinity"), bonus);
+    }
+
     /** 清除指定附魔的所有 bonus */
     public void clearBonuses(String enchantKey) {
         String prefix = enchantKey.toUpperCase() + ".";
@@ -184,6 +241,12 @@ public class LevelConfig {
         public final double unbreakingSaveChancePerLevel;
         public final double unbreakingReturnChancePerLevel;
         public final double unbreakingReturnRatePerLevel;
+        public final double mendingDurabilityPerXp;
+        public final double protectionPercentPerLevel;
+        public final double thornsChancePerLevel;
+        public final double thornsDamagePerLevel;
+        public final double respirationSecondsPerLevel;
+        public final double aquaAffinityChainPercentPerLevel;
 
         public EnchantEffect(String enchantKey) {
             this.enchantKey = enchantKey;
@@ -201,6 +264,12 @@ public class LevelConfig {
             this.unbreakingSaveChancePerLevel = 0;
             this.unbreakingReturnChancePerLevel = 0;
             this.unbreakingReturnRatePerLevel = 0;
+            this.mendingDurabilityPerXp = 0;
+            this.protectionPercentPerLevel = 0;
+            this.thornsChancePerLevel = 0;
+            this.thornsDamagePerLevel = 0;
+            this.respirationSecondsPerLevel = 0;
+            this.aquaAffinityChainPercentPerLevel = 0;
         }
 
         public EnchantEffect(String enchantKey, double damagePercentPerLevel, double sweepDamagePercentPerLevel,
@@ -208,8 +277,12 @@ public class LevelConfig {
                              double lootingMaxDropPercentPerLevel, double lootingRareChancePercentPerLevel,
                              double chainRange, double silkTouchKeepChancePerLevel,
                              double fortuneBaseProbability, double fortuneProbDecrement,
-                             double unbreakingSaveChance, double unbreakingReturnChance,
-                             double unbreakingReturnRate) {
+                              double unbreakingSaveChance, double unbreakingReturnChance,
+                               double unbreakingReturnRate, double mendingDurabilityPerXp,
+                               double protectionPercentPerLevel,
+                               double thornsChancePerLevel, double thornsDamagePerLevel,
+                               double respirationSecondsPerLevel,
+                               double aquaAffinityChainPercentPerLevel) {
             this.enchantKey = enchantKey;
             this.damagePercentPerLevel = damagePercentPerLevel;
             this.sweepDamagePercentPerLevel = sweepDamagePercentPerLevel;
@@ -225,6 +298,12 @@ public class LevelConfig {
             this.unbreakingSaveChancePerLevel = unbreakingSaveChance;
             this.unbreakingReturnChancePerLevel = unbreakingReturnChance;
             this.unbreakingReturnRatePerLevel = unbreakingReturnRate;
+            this.mendingDurabilityPerXp = mendingDurabilityPerXp;
+            this.protectionPercentPerLevel = protectionPercentPerLevel;
+            this.thornsChancePerLevel = thornsChancePerLevel;
+            this.thornsDamagePerLevel = thornsDamagePerLevel;
+            this.respirationSecondsPerLevel = respirationSecondsPerLevel;
+            this.aquaAffinityChainPercentPerLevel = aquaAffinityChainPercentPerLevel;
         }
     }
 
@@ -292,6 +371,26 @@ public class LevelConfig {
         cfg.set("unbreaking." + KEY_UNBREAKING_RETURN, DEFAULT_UNBREAKING_RETURN);
         cfg.set("unbreaking." + KEY_UNBREAKING_RETURN_RATE, DEFAULT_UNBREAKING_RETURN_RATE);
 
+        /* 经验修补：每经验修复 = 等级 × key-multiplier 点耐久 */
+        cfg.set("mending." + KEY_MENDING_DURABILITY, DEFAULT_MENDING_DURABILITY_PER_XP);
+
+        /* 保护类：每级 2% 伤害减免（全套保护 X = 80%） */
+        cfg.set("protection." + KEY_PROTECTION_PERCENT, DEFAULT_PROTECTION_PERCENT);
+        cfg.set("fire_protection." + KEY_PROTECTION_PERCENT, DEFAULT_PROTECTION_PERCENT);
+        cfg.set("blast_protection." + KEY_PROTECTION_PERCENT, DEFAULT_PROTECTION_PERCENT);
+        cfg.set("projectile_protection." + KEY_PROTECTION_PERCENT, DEFAULT_PROTECTION_PERCENT);
+        cfg.set("feather_falling." + KEY_PROTECTION_PERCENT, DEFAULT_PROTECTION_PERCENT);
+
+        /* 荆棘：每级 2% 触发概率 / 2% 反伤（全套荆棘 X = 80%/80%） */
+        cfg.set("thorns." + KEY_THORNS_CHANCE, DEFAULT_THORNS_CHANCE);
+        cfg.set("thorns." + KEY_THORNS_DAMAGE, DEFAULT_THORNS_DAMAGE);
+
+        /* 水下呼吸：每级 +3s 水下呼吸时间（满级 X = 30s） */
+        cfg.set("respiration." + KEY_RESPIRATION_SECONDS, DEFAULT_RESPIRATION_SECONDS);
+
+        /* 水下速掘：每级恢复 5% 链挖掘效能（满级 X = 50%） */
+        cfg.set("aqua_affinity." + KEY_AQUA_AFFINITY_CHAIN_PERCENT, DEFAULT_AQUA_AFFINITY_CHAIN_PERCENT);
+
         List<String> headerLines = Arrays.asList(
             "附魔等级效果配置文件",
             "格式：",
@@ -309,7 +408,13 @@ public class LevelConfig {
             "    fortune-probability-decrement: <时运每高1级概率削减（%），默认5.0>",
             "    save-chance-per-level: <耐久每级不消耗概率（%），默认7.5>",
             "    return-chance-per-level: <耐久每级返还概率（%），默认2.5>",
-            "    return-rate-per-level: <耐久每级返还倍率（%），默认50.0>"
+            "    return-rate-per-level: <耐久每级返还倍率（%），默认50.0>",
+            "    mending-durability-per-xp: <每等级每经验修复耐久点数，默认1.0>",
+            "    protection-percent-per-level: <每级伤害减免（%），默认2.0，全套保护X=80%>",
+            "    thorns-chance-per-level: <每级荆棘触发概率（%），默认2.0>",
+            "    thorns-damage-per-level: <每级荆棘反伤百分比（%），默认2.0>",
+            "    respiration-seconds-per-level: <每级水下呼吸额外秒数，默认3.0，满级X=30s>",
+            "    aqua-affinity-chain-percent-per-level: <每级恢复链挖掘效能（%），默认5.0，满级X=50%>"
         );
         cfg.options().setHeader(headerLines);
 
@@ -357,21 +462,34 @@ public class LevelConfig {
                 effect.unbreakingReturnChancePerLevel);
             double unbreakingReturnRate = config.getDouble(key + "." + KEY_UNBREAKING_RETURN_RATE,
                 effect.unbreakingReturnRatePerLevel);
+            double mendingDurability = config.getDouble(key + "." + KEY_MENDING_DURABILITY,
+                effect.mendingDurabilityPerXp);
+            double protectionPercent = config.getDouble(key + "." + KEY_PROTECTION_PERCENT,
+                effect.protectionPercentPerLevel);
+            double thornsChance = config.getDouble(key + "." + KEY_THORNS_CHANCE,
+                effect.thornsChancePerLevel);
+            double thornsDamage = config.getDouble(key + "." + KEY_THORNS_DAMAGE,
+                effect.thornsDamagePerLevel);
+            double respirationSeconds = config.getDouble(key + "." + KEY_RESPIRATION_SECONDS,
+                effect.respirationSecondsPerLevel);
+            double aquaAffinityChainPercent = config.getDouble(key + "." + KEY_AQUA_AFFINITY_CHAIN_PERCENT,
+                effect.aquaAffinityChainPercentPerLevel);
 
             effects.put(normalizedKey, new EnchantEffect(key,
                 damagePercent, sweepPercent, sweepRange, fireTicks, knockbackBlocks,
                 lootingMaxDrop, lootingRareChance, chainRange, silkTouchChance,
                 fortuneBaseProb, fortuneDecrement,
-                unbreakingSave, unbreakingReturn, unbreakingReturnRate));
+                unbreakingSave, unbreakingReturn, unbreakingReturnRate, mendingDurability,
+                protectionPercent, thornsChance, thornsDamage, respirationSeconds,
+                aquaAffinityChainPercent));
         }
     }
 
-    /* ========== Getter（含 bonus 叠加） ========== */
+    /* ========== Getter（配置原始值，不含 bonus） ========== */
 
     public double getDamagePercentPerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.damagePercentPerLevel : 0.0)
-            + getBonus(enchantKey, "damage");
+        return e != null ? e.damagePercentPerLevel : 0.0;
     }
 
     public boolean hasDamageEffect(String enchantKey) {
@@ -380,8 +498,7 @@ public class LevelConfig {
 
     public double getSweepDamagePercentPerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.sweepDamagePercentPerLevel : 0.0)
-            + getBonus(enchantKey, "sweep");
+        return e != null ? e.sweepDamagePercentPerLevel : 0.0;
     }
 
     public boolean hasSweepEffect(String enchantKey) {
@@ -390,14 +507,12 @@ public class LevelConfig {
 
     public double getSweepRange(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.sweepRange : 0.0)
-            + getBonus(enchantKey, "sweep_range");
+        return e != null ? e.sweepRange : 0.0;
     }
 
     public int getFireTicksPerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.fireTicksPerLevel : 0)
-            + (int) getBonus(enchantKey, "fire");
+        return e != null ? e.fireTicksPerLevel : 0;
     }
 
     public boolean hasFireEffect(String enchantKey) {
@@ -406,8 +521,7 @@ public class LevelConfig {
 
     public double getKnockbackBlocksPerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.knockbackBlocksPerLevel : 0.0)
-            + getBonus(enchantKey, "knockback");
+        return e != null ? e.knockbackBlocksPerLevel : 0.0;
     }
 
     public boolean hasKnockbackEffect(String enchantKey) {
@@ -416,14 +530,12 @@ public class LevelConfig {
 
     public double getLootingMaxDropPercentPerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.lootingMaxDropPercentPerLevel : 0.0)
-            + getBonus(enchantKey, "looting_max_drop");
+        return e != null ? e.lootingMaxDropPercentPerLevel : 0.0;
     }
 
     public double getLootingRareChancePercentPerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.lootingRareChancePercentPerLevel : 0.0)
-            + getBonus(enchantKey, "looting_rare");
+        return e != null ? e.lootingRareChancePercentPerLevel : 0.0;
     }
 
     public boolean hasLootingEffect(String enchantKey) {
@@ -433,8 +545,7 @@ public class LevelConfig {
 
     public double getChainRange(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.chainRange : 0.0)
-            + getBonus(enchantKey, "chain_range");
+        return e != null ? e.chainRange : 0.0;
     }
 
     public boolean hasChainEffect(String enchantKey) {
@@ -443,8 +554,7 @@ public class LevelConfig {
 
     public double getSilkTouchKeepChancePerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.silkTouchKeepChancePerLevel : 0.0)
-            + getBonus(enchantKey, "silk_touch");
+        return e != null ? e.silkTouchKeepChancePerLevel : 0.0;
     }
 
     public boolean hasSilkTouchEffect(String enchantKey) {
@@ -453,41 +563,179 @@ public class LevelConfig {
 
     public double getFortuneBaseProbability(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.fortuneBaseProbability : DEFAULT_FORTUNE_BASE_PROB)
-            + getBonus(enchantKey, "fortune_base");
+        return e != null ? e.fortuneBaseProbability : DEFAULT_FORTUNE_BASE_PROB;
     }
 
     public double getFortuneProbDecrement(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.fortuneProbDecrement : DEFAULT_FORTUNE_DECREMENT)
-            + getBonus(enchantKey, "fortune_decrement");
+        return e != null ? e.fortuneProbDecrement : DEFAULT_FORTUNE_DECREMENT;
     }
 
     public boolean hasFortuneEffect(String enchantKey) {
-        return effects.containsKey(enchantKey.toUpperCase())
-            || bonusOverrides.containsKey(bonusKey(enchantKey, "fortune_base"));
+        return effects.containsKey(enchantKey.toUpperCase());
     }
 
     public double getUnbreakingSaveChancePerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.unbreakingSaveChancePerLevel : DEFAULT_UNBREAKING_SAVE)
-            + getBonus(enchantKey, "unbreaking_save");
+        return e != null ? e.unbreakingSaveChancePerLevel : DEFAULT_UNBREAKING_SAVE;
     }
 
     public double getUnbreakingReturnChancePerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.unbreakingReturnChancePerLevel : DEFAULT_UNBREAKING_RETURN)
-            + getBonus(enchantKey, "unbreaking_return");
+        return e != null ? e.unbreakingReturnChancePerLevel : DEFAULT_UNBREAKING_RETURN;
     }
 
     public double getUnbreakingReturnRatePerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
-        return (e != null ? e.unbreakingReturnRatePerLevel : DEFAULT_UNBREAKING_RETURN_RATE)
-            + getBonus(enchantKey, "unbreaking_return_rate");
+        return e != null ? e.unbreakingReturnRatePerLevel : DEFAULT_UNBREAKING_RETURN_RATE;
     }
 
     public boolean hasUnbreakingEffect(String enchantKey) {
+        return effects.containsKey(enchantKey.toUpperCase());
+    }
+
+    public double getMendingDurabilityPerXp(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.mendingDurabilityPerXp : DEFAULT_MENDING_DURABILITY_PER_XP;
+    }
+
+    public boolean hasMendingEffect(String enchantKey) {
         return effects.containsKey(enchantKey.toUpperCase())
-            || bonusOverrides.containsKey(bonusKey(enchantKey, "unbreaking_save"));
+            && getMendingDurabilityPerXp(enchantKey) > 0.0;
+    }
+
+    public double getProtectionPercentPerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.protectionPercentPerLevel : 0.0;
+    }
+
+    public boolean hasProtectionEffect(String enchantKey) {
+        return getProtectionPercentPerLevel(enchantKey) > 0.0;
+    }
+
+    public double getThornsChancePerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.thornsChancePerLevel : 0.0;
+    }
+
+    public double getThornsDamagePerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.thornsDamagePerLevel : 0.0;
+    }
+
+    public boolean hasThornsEffect(String enchantKey) {
+        return getThornsChancePerLevel(enchantKey) > 0.0;
+    }
+
+    public double getRespirationSecondsPerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.respirationSecondsPerLevel : 0.0;
+    }
+
+    public boolean hasRespirationEffect(String enchantKey) {
+        return getRespirationSecondsPerLevel(enchantKey) > 0.0;
+    }
+
+    public double getAquaAffinityChainPercentPerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.aquaAffinityChainPercentPerLevel : 0.0;
+    }
+
+    public boolean hasAquaAffinityChainEffect(String enchantKey) {
+        return getAquaAffinityChainPercentPerLevel(enchantKey) > 0.0;
+    }
+
+    /* ========== Bonus Getter（外部注入的固定加成值） ========== */
+
+    public double getDamagePercentBonus(String enchantKey) {
+        return getBonus(enchantKey, "damage");
+    }
+
+    public double getSweepPercentBonus(String enchantKey) {
+        return getBonus(enchantKey, "sweep");
+    }
+
+    public double getSweepRangeBonus(String enchantKey) {
+        return getBonus(enchantKey, "sweep_range");
+    }
+
+    public int getFireTicksBonus(String enchantKey) {
+        return (int) getBonus(enchantKey, "fire");
+    }
+
+    public double getKnockbackBlocksBonus(String enchantKey) {
+        return getBonus(enchantKey, "knockback");
+    }
+
+    public double getLootingMaxDropBonus(String enchantKey) {
+        return getBonus(enchantKey, "looting_max_drop");
+    }
+
+    public double getLootingRareChanceBonus(String enchantKey) {
+        return getBonus(enchantKey, "looting_rare");
+    }
+
+    public double getChainRangeBonus(String enchantKey) {
+        return getBonus(enchantKey, "chain_range");
+    }
+
+    public double getSilkTouchChanceBonus(String enchantKey) {
+        return getBonus(enchantKey, "silk_touch");
+    }
+
+    public double getFortuneBaseProbBonus(String enchantKey) {
+        return getBonus(enchantKey, "fortune_base");
+    }
+
+    public double getFortuneDecrementBonus(String enchantKey) {
+        return getBonus(enchantKey, "fortune_decrement");
+    }
+
+    public double getUnbreakingSaveBonus(String enchantKey) {
+        return getBonus(enchantKey, "unbreaking_save");
+    }
+
+    public double getUnbreakingReturnBonus(String enchantKey) {
+        return getBonus(enchantKey, "unbreaking_return");
+    }
+
+    public double getUnbreakingReturnRateBonus(String enchantKey) {
+        return getBonus(enchantKey, "unbreaking_return_rate");
+    }
+
+    public double getMendingDurabilityBonus(String enchantKey) {
+        return getBonus(enchantKey, "mending");
+    }
+
+    public double getProtectionPercentBonus(String enchantKey) {
+        return getBonus(enchantKey, "protection");
+    }
+
+    public double getFireTickPercentBonus(String enchantKey) {
+        return getBonus(enchantKey, "fire_tick");
+    }
+
+    public double getBlastKnockbackPercentBonus(String enchantKey) {
+        return getBonus(enchantKey, "blast_knockback");
+    }
+
+    public double getProjectileKnockbackPercentBonus(String enchantKey) {
+        return getBonus(enchantKey, "projectile_knockback");
+    }
+
+    public double getThornsChanceBonus(String enchantKey) {
+        return getBonus(enchantKey, "thorns_chance");
+    }
+
+    public double getThornsDamageBonus(String enchantKey) {
+        return getBonus(enchantKey, "thorns_damage");
+    }
+
+    public double getRespirationSecondsBonus(String enchantKey) {
+        return getBonus(enchantKey, "respiration");
+    }
+
+    public double getAquaAffinityChainPercentBonus(String enchantKey) {
+        return getBonus(enchantKey, "aqua_affinity");
     }
 }

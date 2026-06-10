@@ -110,7 +110,7 @@ public final class XH extends JavaPlugin {
 
             /* 注册附魔升级事件监听器 */
             getServer().getPluginManager().registerEvents(
-                new EnchantmentLevelListener(levelManager, levelConfig, specialEffects),
+                new EnchantmentLevelListener(levelManager, levelConfig, specialEffects, this),
                 this
             );
 

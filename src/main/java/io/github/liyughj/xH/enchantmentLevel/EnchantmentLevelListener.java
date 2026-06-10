@@ -1,5 +1,6 @@
 package io.github.liyughj.xH.enchantmentLevel;
 
+import io.github.liyughj.xH.enchantmentLevel.EnchantmentLevelConfig.ExpCategory;
 import org.bukkit.*;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.*;
@@ -14,188 +15,202 @@ import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.List;
 
 /**
  * 附魔经验获取事件监听器
- * 监听各种游戏事件，根据物品类型和附魔类型分配经验值
+ *
+ * 设计哲学（Minecraft 原生）：
+ *   用剑战斗 → 剑上的附魔成长
+ *   用镐挖矿 → 镐上的附魔成长
+ *   穿护甲受伤 → 护甲上的附魔成长
+ *
+ * 经验公式：
+ *   工具: max(1, (toolBaseExp × blockRarity × globalMultiplier) + xpBonus)
+ *   近战: max(1, (meleeBaseExp × entityRarity × dimensionMul × globalMultiplier) + xpBonus)
+ *   远程: max(1, (rangedBaseExp × entityRarity × dimensionMul × globalMultiplier) + xpBonus)
+ *   护甲: max(1, (armorBaseExp × globalMultiplier) + xpBonus)
+ *
+ * RPG 接口：
+ *   PDC 跳过标记：物品 PDC 含对应 key → 本插件跳过该物品的 XP 发放
+ *   XP Bonus：外部模块可通过 LevelConfig.setXpBonus() 注入额外经验
+ *   优先级间隙：MONITOR 优先级，RPG 模块可在 HIGH/HIGHEST 插入
  */
 public class EnchantmentLevelListener implements Listener {
 
     private final EnchantmentLevelManager manager;
     private final EnchantmentLevelConfig config;
     private final SpecialEffects effects;
+    private final JavaPlugin plugin;
 
-    /**
-     * 构造函数
-     *
-     * @param manager 经验管理器
-     * @param config  配置实例
-     * @param effects 特效实例
-     */
-    public EnchantmentLevelListener(EnchantmentLevelManager manager, EnchantmentLevelConfig config, SpecialEffects effects) {
+    public EnchantmentLevelListener(EnchantmentLevelManager manager, EnchantmentLevelConfig config, SpecialEffects effects, JavaPlugin plugin) {
         this.manager = manager;
         this.config = config;
         this.effects = effects;
+        this.plugin = plugin;
     }
 
-    /**
-     * 工具附魔经验获取：挖掘方块
-     */
+    /* ==================== 工具：挖掘方块 → TOOL 类别附魔 ==================== */
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         if (!config.isEnabled() || !config.isToolSourceEnabled()) return;
 
         Player player = event.getPlayer();
         ItemStack tool = player.getInventory().getItemInMainHand();
-        if (!isTool(tool)) return;
-        if (!tool.hasItemMeta()) return;
+        if (!isTool(tool) || !tool.hasItemMeta()) return;
 
-        /* 获取经验值（基于方块硬度） */
-        double hardness = event.getBlock().getType().getHardness();
-        int expAmount = (int) Math.max(1, hardness * config.getBlockExpMultiplier());
+        ItemMeta meta = tool.getItemMeta();
 
-        /* 检查工具上是否有附魔 */
+        /* RPG 模块接管：物品 PDC 有标记则跳过 */
+        if (meta != null && meta.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, EnchantmentLevelData.PDC_XP_TOOL_RPG_MANAGED),
+            PersistentDataType.BYTE)) return;
+
         if (EnchantmentLevelData.getAllEnchantments(tool).isEmpty()) return;
 
-        /* 初始化经验数据（如果尚未初始化） */
         if (config.isAutoInitialize() && !manager.hasExpData(tool)) {
             manager.initializeExp(tool);
         }
 
-        /* 为每个附魔添加经验 */
-        List<Enchantment> upgraded = manager.addExpToEnchantments(tool, expAmount);
+        /* 经验 = 基础值 × 方块稀有度 × 全局倍率 + RPG Bonus */
+        Material block = event.getBlock().getType();
+        double rarity = config.getBlockRarity(block);
+        double base = config.getToolBaseExp() * rarity * config.getGlobalMultiplier();
+        int expAmount = (int) Math.max(1, base + config.getXpBonus(ExpCategory.TOOL));
 
-        /* 播放升级特效 */
+        List<Enchantment> upgraded = manager.addExpToEnchantments(tool, expAmount, ExpCategory.TOOL);
+
         if (!upgraded.isEmpty()) {
             playUpgradeEffects(player, tool, upgraded);
         }
     }
 
-    /**
-     * 近战武器附魔经验获取：攻击实体
-     */
+    /* ==================== 近战：攻击实体 → WEAPON 类别附魔 ==================== */
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
         if (!config.isEnabled() || !config.isMeleeSourceEnabled()) return;
 
-        /* 检查攻击者是否为玩家 */
         if (!(event.getDamager() instanceof Player player)) return;
-        /* 检查目标是否为生物 */
-        if (!(event.getEntity() instanceof LivingEntity)) return;
+        if (!(event.getEntity() instanceof LivingEntity target)) return;
 
-        /* 获取主手武器 */
         ItemStack weapon = player.getInventory().getItemInMainHand();
         if (!isMeleeWeapon(weapon) || !weapon.hasItemMeta()) return;
 
-        /* 获取经验值（基于伤害量） */
-        int expAmount = (int) Math.max(1, event.getDamage() * config.getEntityExpMultiplier());
+        ItemMeta meta = weapon.getItemMeta();
 
-        /* 检查武器上是否有附魔 */
+        /* RPG 模块接管：物品 PDC 有标记则跳过 */
+        if (meta != null && meta.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, EnchantmentLevelData.PDC_XP_WEAPON_RPG_MANAGED),
+            PersistentDataType.BYTE)) return;
+
         if (EnchantmentLevelData.getAllEnchantments(weapon).isEmpty()) return;
 
-        /* 自动初始化经验数据 */
         if (config.isAutoInitialize() && !manager.hasExpData(weapon)) {
             manager.initializeExp(weapon);
         }
 
-        /* 为每个附魔添加经验 */
-        List<Enchantment> upgraded = manager.addExpToEnchantments(weapon, expAmount);
+        /* 经验 = 基础值 × 生物稀有度 × 维度倍率 × 全局倍率 + RPG Bonus */
+        double entityRarity = config.getEntityRarity(target.getType());
+        double dimensionMul = config.getDimensionMultiplier(target.getWorld());
+        double base = config.getMeleeBaseExp() * entityRarity * dimensionMul * config.getGlobalMultiplier();
+        int expAmount = (int) Math.max(1, base + config.getXpBonus(ExpCategory.WEAPON));
 
-        /* 播放升级特效 */
+        List<Enchantment> upgraded = manager.addExpToEnchantments(weapon, expAmount, ExpCategory.WEAPON);
+
         if (!upgraded.isEmpty()) {
             playUpgradeEffects(player, weapon, upgraded);
         }
     }
 
-    /**
-     * 远程武器附魔经验获取：箭矢命中
-     */
+    /* ==================== 远程：箭矢命中 → BOW 类别附魔 ==================== */
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onProjectileHit(ProjectileHitEvent event) {
         if (!config.isEnabled() || !config.isRangedSourceEnabled()) return;
 
-        /* 检查是否为箭矢 */
         if (!(event.getEntity() instanceof Arrow arrow)) return;
-        /* 检查射击者是否为玩家 */
         if (!(arrow.getShooter() instanceof Player player)) return;
-        /* 检查命中目标是否为生物 */
-        if (!(event.getHitEntity() instanceof LivingEntity)) return;
+        if (!(event.getHitEntity() instanceof LivingEntity target)) return;
 
-        /* 获取主手武器 */
         ItemStack bow = player.getInventory().getItemInMainHand();
         if (!isRangedWeapon(bow)) {
-            /* 副手检查 */
             bow = player.getInventory().getItemInOffHand();
             if (!isRangedWeapon(bow)) return;
         }
         if (!bow.hasItemMeta()) return;
 
-        /* 获取经验值（基于箭矢伤害） */
-        int expAmount = (int) Math.max(1, arrow.getDamage() * config.getEntityExpMultiplier());
+        ItemMeta meta = bow.getItemMeta();
 
-        /* 检查武器上是否有附魔 */
+        /* RPG 模块接管：物品 PDC 有标记则跳过 */
+        if (meta != null && meta.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, EnchantmentLevelData.PDC_XP_BOW_RPG_MANAGED),
+            PersistentDataType.BYTE)) return;
+
         if (EnchantmentLevelData.getAllEnchantments(bow).isEmpty()) return;
 
-        /* 自动初始化经验数据 */
         if (config.isAutoInitialize() && !manager.hasExpData(bow)) {
             manager.initializeExp(bow);
         }
 
-        /* 为每个附魔添加经验 */
-        List<Enchantment> upgraded = manager.addExpToEnchantments(bow, expAmount);
+        /* 经验 = 基础值 × 生物稀有度 × 维度倍率 × 全局倍率 + RPG Bonus */
+        double entityRarity = config.getEntityRarity(target.getType());
+        double dimensionMul = config.getDimensionMultiplier(target.getWorld());
+        double base = config.getRangedBaseExp() * entityRarity * dimensionMul * config.getGlobalMultiplier();
+        int expAmount = (int) Math.max(1, base + config.getXpBonus(ExpCategory.BOW));
 
-        /* 播放升级特效 */
+        List<Enchantment> upgraded = manager.addExpToEnchantments(bow, expAmount, ExpCategory.BOW);
+
         if (!upgraded.isEmpty()) {
             playUpgradeEffects(player, bow, upgraded);
         }
     }
 
-    /**
-     * 护甲附魔经验获取：受到伤害
-     */
+    /* ==================== 护甲：受到伤害 → ARMOR 类别附魔 ==================== */
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityDamage(EntityDamageEvent event) {
         if (!config.isEnabled() || !config.isArmorSourceEnabled()) return;
 
-        /* 检查受伤者是否为玩家 */
         if (!(event.getEntity() instanceof Player player)) return;
 
-        /* 获取经验值（基于受伤量） */
-        int expAmount = (int) Math.max(1, event.getDamage() * config.getDamageExpMultiplier());
+        double base = config.getArmorBaseExp() * config.getGlobalMultiplier();
+        int expAmount = (int) Math.max(1, base + config.getXpBonus(ExpCategory.ARMOR));
 
-        /* 遍历玩家穿戴的护甲 */
         PlayerInventory inv = player.getInventory();
         ItemStack[] armor = {inv.getHelmet(), inv.getChestplate(), inv.getLeggings(), inv.getBoots()};
 
         for (ItemStack piece : armor) {
-            /* 跳过空槽位或无Meta的物品 */
             if (piece == null || piece.getType().isAir() || !piece.hasItemMeta()) continue;
 
-            /* 检查护甲上是否有附魔 */
+            ItemMeta meta = piece.getItemMeta();
+
+            /* RPG 模块接管：物品 PDC 有标记则跳过 */
+            if (meta != null && meta.getPersistentDataContainer().has(
+                new NamespacedKey(plugin, EnchantmentLevelData.PDC_XP_ARMOR_RPG_MANAGED),
+                PersistentDataType.BYTE)) continue;
+
             if (EnchantmentLevelData.getAllEnchantments(piece).isEmpty()) continue;
 
-            /* 自动初始化经验数据 */
             if (config.isAutoInitialize() && !manager.hasExpData(piece)) {
                 manager.initializeExp(piece);
             }
 
-            /* 为每个附魔添加经验 */
-            List<Enchantment> upgraded = manager.addExpToEnchantments(piece, expAmount);
+            List<Enchantment> upgraded = manager.addExpToEnchantments(piece, expAmount, ExpCategory.ARMOR);
 
-            /* 播放升级特效 */
             if (!upgraded.isEmpty()) {
                 playUpgradeEffects(player, piece, upgraded);
             }
         }
     }
 
-    /**
-     * 附魔台附魔时自动初始化经验数据
-     * 注意：EnchantingLevelListener（优先级 HIGH）会在本监听器之前执行，
-     * 将附魔强制设为 I 级，因此本监听器初始化时等级已为 1 级。
-     */
+    /* ==================== 初始化 ==================== */
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEnchantItem(EnchantItemEvent event) {
         if (!config.isEnabled() || !config.isAutoInitialize()) return;
@@ -206,9 +221,6 @@ public class EnchantmentLevelListener implements Listener {
         manager.initializeExp(item);
     }
 
-    /**
-     * 铁砧合并时自动初始化经验数据
-     */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPrepareAnvil(PrepareAnvilEvent event) {
         if (!config.isEnabled() || !config.isAutoInitialize()) return;
@@ -216,13 +228,12 @@ public class EnchantmentLevelListener implements Listener {
         ItemStack result = event.getResult();
         if (result == null || result.getType().isAir()) return;
 
-        /* 初始化结果物品的经验数据 */
         if (!manager.hasExpData(result)) {
             manager.initializeExp(result);
         }
     }
 
-    /* ========== 物品类型判断 ========== */
+    /* ==================== 物品类型判断 ==================== */
 
     private boolean isTool(ItemStack item) {
         if (item == null || item.getType().isAir()) return false;
@@ -245,7 +256,7 @@ public class EnchantmentLevelListener implements Listener {
                item.getType() == Material.TRIDENT;
     }
 
-    /* ========== 升级特效 ========== */
+    /* ==================== 升级特效 ==================== */
 
     private void playUpgradeEffects(Player player, ItemStack item, List<Enchantment> upgraded) {
         if (effects == null || !config.isEffectsEnabled()) return;
@@ -264,7 +275,6 @@ public class EnchantmentLevelListener implements Listener {
             world.spawnParticle(particle, loc, count, offsetX, offsetY, offsetZ, speed);
         }
 
-        /* 升级音效 */
         world.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.5f, 1.5f);
     }
 }

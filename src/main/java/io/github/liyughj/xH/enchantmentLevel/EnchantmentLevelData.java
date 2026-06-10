@@ -21,6 +21,17 @@ public class EnchantmentLevelData {
     /* PDC 容器命名空间 */
     private static final String NAMESPACE = "xh_data";
 
+    /* ==================== RPG 接管标记 ==================== */
+
+    /** PDC 键：工具 XP 由 RPG 模块接管，本插件跳过 */
+    public static final String PDC_XP_TOOL_RPG_MANAGED = "xp_tool_rpg_managed";
+    /** PDC 键：近战武器 XP 由 RPG 模块接管，本插件跳过 */
+    public static final String PDC_XP_WEAPON_RPG_MANAGED = "xp_weapon_rpg_managed";
+    /** PDC 键：远程武器 XP 由 RPG 模块接管，本插件跳过 */
+    public static final String PDC_XP_BOW_RPG_MANAGED = "xp_bow_rpg_managed";
+    /** PDC 键：护甲 XP 由 RPG 模块接管，本插件跳过 */
+    public static final String PDC_XP_ARMOR_RPG_MANAGED = "xp_armor_rpg_managed";
+
     /* 静态插件引用（在插件启用时通过 init() 设置） */
     private static JavaPlugin plugin;
 

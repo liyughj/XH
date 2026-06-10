@@ -15,8 +15,12 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityCombustEvent;
+import org.bukkit.event.entity.EntityAirChangeEvent;
+import org.bukkit.event.player.PlayerExpChangeEvent;
 import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -62,6 +66,15 @@ public class LevelEffectListener implements Listener {
     /** 连锁挖掘进行中标志（阻止精准采集在连锁破坏的方块上触发保留效果） */
     private final ThreadLocal<Boolean> inChainMining = ThreadLocal.withInitial(() -> false);
 
+    /** 经验修补重入防护（防止 player.giveExp() 递归触发 PlayerExpChangeEvent） */
+    private final ThreadLocal<Boolean> inMendingProcess = ThreadLocal.withInitial(() -> false);
+
+    /** 荆棘反伤递归防护（防止反伤互相触发无限递归） */
+    private final ThreadLocal<Boolean> inThornsReflection = ThreadLocal.withInitial(() -> false);
+
+    /** 水下呼吸分数累积（用于精确控制空气消耗率） */
+    private final Map<UUID, Double> respirationFractionalRefund = new HashMap<>();
+
     public LevelEffectListener(JavaPlugin plugin, LevelConfig levelConfig) {
         this.plugin = plugin;
         this.levelConfig = levelConfig;
@@ -91,6 +104,25 @@ public class LevelEffectListener implements Listener {
 
         stripVanillaWeaponDamage(event, meta);
         stripVanillaFireAspect(meta, target);
+    }
+
+    /**
+     * LOWEST 优先级：剥离原版保护附魔的 EPF 计算
+     * 当 Player 是受伤害方时，零化 MAGIC modifier，
+     * 防止原版 EPF 与自定义保护重复减免。
+     * <p>
+     * 注：Paper 1.21.4 中 MAGIC modifier 没有非弃用替代 API，
+     * 这是唯一能零化原版保护 EPF 的方式。
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void stripVanillaProtection(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        int totalLevel = sumProtectionLevels(player, event.getCause());
+        if (totalLevel <= 0) return;
+
+        /* 零化原版保护 EPF，由自定义系统接管 */
+        event.setDamage(EntityDamageEvent.DamageModifier.MAGIC, 0.0);
     }
 
     /**
@@ -175,6 +207,7 @@ public class LevelEffectListener implements Listener {
     private void applyWeaponDamageBonus(EntityDamageByEntityEvent event, ItemMeta meta) {
         double bestPercent = 0.0;
         int bestLevel = 0;
+        String bestKey = null;
 
         for (Enchantment enchant : WEAPON_DAMAGE_ENCHANTS) {
             int level = meta.getEnchantLevel(enchant);
@@ -187,12 +220,14 @@ public class LevelEffectListener implements Listener {
             if (percent > bestPercent || (percent == bestPercent && level > bestLevel)) {
                 bestPercent = percent;
                 bestLevel = level;
+                bestKey = key;
             }
         }
 
         if (bestLevel <= 0 || bestPercent <= 0.0) return;
 
-        double multiplier = 1.0 + (bestPercent * bestLevel / 100.0);
+        double multiplier = 1.0 + (bestPercent * bestLevel / 100.0)
+            + levelConfig.getDamagePercentBonus(bestKey) / 100.0;
         event.setDamage(event.getDamage() * multiplier);
     }
 
@@ -204,7 +239,8 @@ public class LevelEffectListener implements Listener {
         if (!levelConfig.hasFireEffect(key)) return;
 
         int ticksPerLevel = levelConfig.getFireTicksPerLevel(key);
-        target.setFireTicks(ticksPerLevel * level);
+        target.setFireTicks(ticksPerLevel * level
+            + levelConfig.getFireTicksBonus(key));
     }
 
     private void applyKnockback(ItemMeta meta, Player player, LivingEntity target) {
@@ -220,7 +256,8 @@ public class LevelEffectListener implements Listener {
         if (!levelConfig.hasKnockbackEffect(key)) return;
 
         double blocksPerLevel = levelConfig.getKnockbackBlocksPerLevel(key);
-        double totalBlocks = blocksPerLevel * level;
+        double totalBlocks = blocksPerLevel * level
+            + levelConfig.getKnockbackBlocksBonus(key);
 
         Vector direction = target.getLocation().toVector()
             .subtract(player.getLocation().toVector())
@@ -235,6 +272,464 @@ public class LevelEffectListener implements Listener {
                 .add(direction.multiply(velocityStrength))
                 .setY(Math.min(target.getVelocity().getY() + 0.4, 0.4)));
         });
+    }
+
+    /* ==================== 第二步B：保护附魔减免 ==================== */
+
+    /**
+     * HIGHEST 优先级：在武器伤害加成（HIGH）之后、原版护甲前，
+     * 应用自定义保护附魔减免。
+     * <p>
+     * 流水线：伤害 → 武器附魔加成(HIGH) → 保护附魔减免(HIGHEST) → 原版护甲 → RPG
+     * <p>
+     * 保护附魔效果：每级 2% 减免（默认），全套保护 X 配戴 4 件 = 80%
+     * <p>
+     * 支持的保护类型：
+     * <ul>
+     *   <li>protection：所有伤害类型（泛用）</li>
+     *   <li>fire_protection：火焰/岩浆伤害</li>
+     *   <li>blast_protection：爆炸伤害</li>
+     *   <li>projectile_protection：弹射物伤害</li>
+     *   <li>feather_falling：摔落伤害</li>
+     * </ul>
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void applyProtectionReduction(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        double totalPercent = computeProtectionReduction(player, event.getCause());
+        if (totalPercent <= 0.0) return;
+
+        /* 减免百分比上限 100%（最小伤害 0） */
+        if (totalPercent > 100.0) totalPercent = 100.0;
+
+        double factor = 1.0 - totalPercent / 100.0;
+        double currentDamage = event.getDamage();
+
+        /* MAGIC 已在 LOWEST 归零，直接对当前伤害值（= 武器加成后的基础伤害）应用减免 */
+        event.setDamage(currentDamage * factor);
+    }
+
+    /**
+     * 计算玩家所有护甲中针对指定伤害类型的保护减免总百分比。
+     * 每件护甲同时计算专有保护和泛用保护，取较高者。
+     */
+    private double computeProtectionReduction(Player player, DamageCause cause) {
+        double totalPercent = 0.0;
+
+        for (ItemStack armor : player.getInventory().getArmorContents()) {
+            if (armor == null || !armor.hasItemMeta()) continue;
+            ItemMeta meta = armor.getItemMeta();
+
+            /* RPG 接管：有标记则跳该件 */
+            if (meta.getPersistentDataContainer().has(
+                new NamespacedKey(plugin, PDC_PROTECTION_RPG_MANAGED),
+                PersistentDataType.BYTE)) continue;
+
+            /* 同时计算专有保护和泛用保护，取较高者 */
+            double specific = getSpecificProtection(meta, cause);
+            double generic = getProtectionPercent(meta);
+            totalPercent += Math.max(specific, generic);
+        }
+
+        return totalPercent;
+    }
+
+    /**
+     * 获取物品上泛用保护（protection）的减免百分比
+     */
+    private double getProtectionPercent(ItemMeta meta) {
+        int level = meta.getEnchantLevel(Enchantment.PROTECTION);
+        if (level <= 0) return 0.0;
+        String key = Enchantment.PROTECTION.getKey().getKey();
+        if (!levelConfig.hasProtectionEffect(key)) return 0.0;
+        return levelConfig.getProtectionPercentPerLevel(key) * level
+            + levelConfig.getProtectionPercentBonus(key);
+    }
+
+    /**
+     * 根据伤害类型获取对应的专有保护附魔减免
+     */
+    private double getSpecificProtection(ItemMeta meta, DamageCause cause) {
+        Enchantment specific = damageCauseToProtectionEnchant(cause);
+        if (specific == null) return 0.0;
+
+        int level = meta.getEnchantLevel(specific);
+        if (level <= 0) return 0.0;
+        String key = specific.getKey().getKey();
+        if (!levelConfig.hasProtectionEffect(key)) return 0.0;
+        return levelConfig.getProtectionPercentPerLevel(key) * level
+            + levelConfig.getProtectionPercentBonus(key);
+    }
+
+    /**
+     * 伤害类型 → 对应的保护附魔
+     */
+    private Enchantment damageCauseToProtectionEnchant(DamageCause cause) {
+        if (cause == null) return null;
+        switch (cause) {
+            case FIRE:
+            case FIRE_TICK:
+            case LAVA:
+            case HOT_FLOOR:
+                return Enchantment.FIRE_PROTECTION;
+            case BLOCK_EXPLOSION:
+            case ENTITY_EXPLOSION:
+                return Enchantment.BLAST_PROTECTION;
+            case PROJECTILE:
+                return Enchantment.PROJECTILE_PROTECTION;
+            case FALL:
+                return Enchantment.FEATHER_FALLING;
+            default:
+                return null; // 无专有保护 → 回退泛用 protection
+        }
+    }
+
+    /**
+     * 统计玩家身上保护附魔的等级总和（用于判断是否需要剥离原版 EPF）。
+     * 每件取专有保护与泛用保护的较高等级。
+     */
+    private int sumProtectionLevels(Player player, DamageCause cause) {
+        int total = 0;
+
+        for (ItemStack armor : player.getInventory().getArmorContents()) {
+            if (armor == null || !armor.hasItemMeta()) continue;
+            ItemMeta meta = armor.getItemMeta();
+
+            if (meta.getPersistentDataContainer().has(
+                new NamespacedKey(plugin, PDC_PROTECTION_RPG_MANAGED),
+                PersistentDataType.BYTE)) continue;
+
+            int specificLevel = 0;
+            Enchantment specific = damageCauseToProtectionEnchant(cause);
+            if (specific != null) {
+                int level = meta.getEnchantLevel(specific);
+                if (level > 0 && levelConfig.hasProtectionEffect(specific.getKey().getKey())) {
+                    specificLevel = level;
+                }
+            }
+
+            int genericLevel = 0;
+            int protLevel = meta.getEnchantLevel(Enchantment.PROTECTION);
+            if (protLevel > 0 && levelConfig.hasProtectionEffect(Enchantment.PROTECTION.getKey().getKey())) {
+                genericLevel = protLevel;
+            }
+
+            total += Math.max(specificLevel, genericLevel);
+        }
+
+        return total;
+    }
+
+    /* ==================== 第二步C：火焰保护燃烧时间减免 ==================== */
+
+    /**
+     * HIGHEST 优先级：在实体被点燃时，根据火焰保护附魔减免燃烧时间。
+     * <p>
+     * 燃烧时间减免 = Σ 每件护甲（等级 × 2% + bonus），上限 100%
+     * 减免后的燃烧时间最小为 1 tick。
+     * <p>
+     * 公式：newDuration = max(1, originalDuration × (1 - totalPercent / 100))
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void applyFireTickReduction(EntityCombustEvent event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        float duration = event.getDuration();
+        if (duration <= 1.0f) return;
+
+        double totalPercent = 0.0;
+        String fireKey = Enchantment.FIRE_PROTECTION.getKey().getKey();
+        String protKey = Enchantment.PROTECTION.getKey().getKey();
+
+        if (!levelConfig.hasProtectionEffect(fireKey) && !levelConfig.hasProtectionEffect(protKey)) return;
+
+        for (ItemStack armor : player.getInventory().getArmorContents()) {
+            if (armor == null || !armor.hasItemMeta()) continue;
+            ItemMeta meta = armor.getItemMeta();
+
+            if (meta.getPersistentDataContainer().has(
+                new NamespacedKey(plugin, PDC_FIRE_TICK_RPG_MANAGED),
+                PersistentDataType.BYTE)) continue;
+
+            /* 同时计算火焰保护和泛用保护，取较高者 */
+            double specific = 0.0;
+            int fireLevel = meta.getEnchantLevel(Enchantment.FIRE_PROTECTION);
+            if (fireLevel > 0 && levelConfig.hasProtectionEffect(fireKey)) {
+                specific = levelConfig.getProtectionPercentPerLevel(fireKey) * fireLevel
+                    + levelConfig.getFireTickPercentBonus(fireKey);
+            }
+
+            double generic = 0.0;
+            int protLevel = meta.getEnchantLevel(Enchantment.PROTECTION);
+            if (protLevel > 0 && levelConfig.hasProtectionEffect(protKey)) {
+                generic = levelConfig.getProtectionPercentPerLevel(protKey) * protLevel
+                    + levelConfig.getFireTickPercentBonus(protKey);
+            }
+
+            totalPercent += Math.max(specific, generic);
+        }
+
+        if (totalPercent <= 0.0) return;
+        if (totalPercent > 100.0) totalPercent = 100.0;
+
+        float newDuration = duration * (float)(1.0 - totalPercent / 100.0);
+        if (newDuration < 1.0f) newDuration = 1.0f;
+
+        event.setDuration(newDuration);
+    }
+
+    /* ==================== 第二步D：爆炸保护击退减免 ==================== */
+
+    /**
+     * MONITOR 优先级：爆炸伤害发生后，根据爆炸保护减免击退速度。
+     * <p>
+     * 击退减免 = Σ 每件护甲 max(专有保护%, 泛用保护%)，上限 100%
+     * 每件：等级 × protection-percent-per-level + blast_knockback bonus
+     * <p>
+     * 使用 1 tick 延迟确保爆炸击退已由服务端应用后再缩减。
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void applyBlastKnockbackReduction(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        DamageCause cause = event.getCause();
+        if (cause != DamageCause.BLOCK_EXPLOSION && cause != DamageCause.ENTITY_EXPLOSION) return;
+
+        double totalPercent = computeBlastKnockbackReduction(player);
+        if (totalPercent <= 0.0) return;
+        if (totalPercent > 100.0) totalPercent = 100.0;
+
+        double factor = 1.0 - totalPercent / 100.0;
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isValid() || player.isDead()) return;
+            player.setVelocity(player.getVelocity().multiply(factor));
+        });
+    }
+
+    /**
+     * 计算爆炸击退减免总百分比。每件取专有保护与泛用保护的较高者。
+     */
+    private double computeBlastKnockbackReduction(Player player) {
+        String blastKey = Enchantment.BLAST_PROTECTION.getKey().getKey();
+        String protKey = Enchantment.PROTECTION.getKey().getKey();
+
+        if (!levelConfig.hasProtectionEffect(blastKey)
+            && !levelConfig.hasProtectionEffect(protKey)) return 0.0;
+
+        double totalPercent = 0.0;
+
+        for (ItemStack armor : player.getInventory().getArmorContents()) {
+            if (armor == null || !armor.hasItemMeta()) continue;
+            ItemMeta meta = armor.getItemMeta();
+
+            if (meta.getPersistentDataContainer().has(
+                new NamespacedKey(plugin, PDC_BLAST_KNOCKBACK_RPG_MANAGED),
+                PersistentDataType.BYTE)) continue;
+
+            double specific = 0.0;
+            int blastLevel = meta.getEnchantLevel(Enchantment.BLAST_PROTECTION);
+            if (blastLevel > 0 && levelConfig.hasProtectionEffect(blastKey)) {
+                specific = levelConfig.getProtectionPercentPerLevel(blastKey) * blastLevel
+                    + levelConfig.getBlastKnockbackPercentBonus(blastKey);
+            }
+
+            double generic = 0.0;
+            int protLevel = meta.getEnchantLevel(Enchantment.PROTECTION);
+            if (protLevel > 0 && levelConfig.hasProtectionEffect(protKey)) {
+                generic = levelConfig.getProtectionPercentPerLevel(protKey) * protLevel
+                    + levelConfig.getBlastKnockbackPercentBonus(protKey);
+            }
+
+            totalPercent += Math.max(specific, generic);
+        }
+
+        return totalPercent;
+    }
+
+    /* ==================== 第二步E：弹射物保护击退减免 ==================== */
+
+    /**
+     * MONITOR 优先级：弹射物伤害发生后，根据弹射物保护减免击退速度。
+     * <p>
+     * 击退减免 = Σ 每件护甲 max(专有保护%, 泛用保护%)，上限 100%
+     * 每件：等级 × protection-percent-per-level + projectile_knockback bonus
+     * <p>
+     * 使用 1 tick 延迟确保弹射物击退已由服务端应用后再缩减。
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void applyProjectileKnockbackReduction(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        if (event.getCause() != DamageCause.PROJECTILE) return;
+
+        double totalPercent = computeProjectileKnockbackReduction(player);
+        if (totalPercent <= 0.0) return;
+        if (totalPercent > 100.0) totalPercent = 100.0;
+
+        double factor = 1.0 - totalPercent / 100.0;
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isValid() || player.isDead()) return;
+            player.setVelocity(player.getVelocity().multiply(factor));
+        });
+    }
+
+    /**
+     * 计算弹射物击退减免总百分比。每件取专有保护与泛用保护的较高者。
+     */
+    private double computeProjectileKnockbackReduction(Player player) {
+        String projectileKey = Enchantment.PROJECTILE_PROTECTION.getKey().getKey();
+        String protKey = Enchantment.PROTECTION.getKey().getKey();
+
+        if (!levelConfig.hasProtectionEffect(projectileKey)
+            && !levelConfig.hasProtectionEffect(protKey)) return 0.0;
+
+        double totalPercent = 0.0;
+
+        for (ItemStack armor : player.getInventory().getArmorContents()) {
+            if (armor == null || !armor.hasItemMeta()) continue;
+            ItemMeta meta = armor.getItemMeta();
+
+            if (meta.getPersistentDataContainer().has(
+                new NamespacedKey(plugin, PDC_PROJECTILE_KNOCKBACK_RPG_MANAGED),
+                PersistentDataType.BYTE)) continue;
+
+            double specific = 0.0;
+            int projectileLevel = meta.getEnchantLevel(Enchantment.PROJECTILE_PROTECTION);
+            if (projectileLevel > 0 && levelConfig.hasProtectionEffect(projectileKey)) {
+                specific = levelConfig.getProtectionPercentPerLevel(projectileKey) * projectileLevel
+                    + levelConfig.getProjectileKnockbackPercentBonus(projectileKey);
+            }
+
+            double generic = 0.0;
+            int protLevel = meta.getEnchantLevel(Enchantment.PROTECTION);
+            if (protLevel > 0 && levelConfig.hasProtectionEffect(protKey)) {
+                generic = levelConfig.getProtectionPercentPerLevel(protKey) * protLevel
+                    + levelConfig.getProjectileKnockbackPercentBonus(protKey);
+            }
+
+            totalPercent += Math.max(specific, generic);
+        }
+
+        return totalPercent;
+    }
+
+    /* ==================== 第二步F：荆棘反伤 ==================== */
+
+    /**
+     * MONITOR 优先级：在玩家受到攻击者伤害后（所有减免计算完成），
+     * 概率性触发荆棘反伤。
+     * <p>
+     * 反伤公式：最终伤害 × 反伤百分比（%/100）
+     * <p>
+     * 触发概率 = Σ 每件护甲（等级 × thorns-chance-per-level + bonus chance），上限 100%
+     * 反伤百分比 = Σ 每件护甲（等级 × thorns-damage-per-level + bonus damage），作为反伤伤害比例
+     * <p>
+     * 反伤通过 damage() 施加给攻击者（独立事件，支持 RPG 模块触发），
+     * 使用防递归标志防止荆棘对荆棘的无限反射。
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void applyThornsReflection(EntityDamageByEntityEvent event) {
+        /* 递归防护 */
+        if (inThornsReflection.get()) return;
+
+        if (!(event.getEntity() instanceof Player player)) return;
+        if (!(event.getDamager() instanceof LivingEntity attacker)) return;
+        if (attacker.isDead()) return;
+
+        String key = Enchantment.THORNS.getKey().getKey();
+        if (!levelConfig.hasThornsEffect(key)) return;
+
+        double totalChance = 0.0;
+        double totalDamagePercent = 0.0;
+
+        for (ItemStack armor : player.getInventory().getArmorContents()) {
+            if (armor == null || !armor.hasItemMeta()) continue;
+            ItemMeta meta = armor.getItemMeta();
+
+            if (meta.getPersistentDataContainer().has(
+                new NamespacedKey(plugin, PDC_THORNS_RPG_MANAGED),
+                PersistentDataType.BYTE)) continue;
+
+            int level = meta.getEnchantLevel(Enchantment.THORNS);
+            if (level <= 0) continue;
+
+            totalChance += levelConfig.getThornsChancePerLevel(key) * level
+                + levelConfig.getThornsChanceBonus(key);
+            totalDamagePercent += levelConfig.getThornsDamagePerLevel(key) * level
+                + levelConfig.getThornsDamageBonus(key);
+        }
+
+        if (totalChance <= 0.0 || totalDamagePercent <= 0.0) return;
+        if (totalChance > 100.0) totalChance = 100.0;
+
+        ThreadLocalRandom rand = ThreadLocalRandom.current();
+        if (rand.nextDouble() * 100.0 >= totalChance) return;
+
+        /* 反伤伤害 = 玩家最终承受的伤害 × 反伤比例 */
+        double finalDamage = event.getFinalDamage();
+        double reflectDamage = finalDamage * totalDamagePercent / 100.0;
+        if (reflectDamage <= 0.0) return;
+
+        /* 通过 damage() 施加反伤（触发独立伤害事件链） */
+        inThornsReflection.set(true);
+        try {
+            attacker.damage(reflectDamage, player);
+        } finally {
+            inThornsReflection.set(false);
+        }
+    }
+
+    /* ==================== 第二步G：水下呼吸 ==================== */
+
+    /**
+     * HIGHEST 优先级：在水下空气减少时，根据水下呼吸附魔降低消耗率。
+     * <p>
+     * 有效空气总量 = 300 + 等级 × seconds-per-level × 20 tick
+     * 空气消耗率 = 300 / 有效总量（原速的百分比）
+     * <p>
+     * 默认：每级 3 秒 → 等级 X = 60 秒有效时间（原版 15s × 4）
+     * <p>
+     * 使用分数累积器精确控制每 tick 的消耗量。
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void applyRespiration(EntityAirChangeEvent event) {
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        int newAir = event.getAmount();
+        int currentAir = player.getRemainingAir();
+        if (newAir >= currentAir) return; // 空气增加时不干预
+
+        ItemStack helmet = player.getInventory().getHelmet();
+        if (helmet == null || !helmet.hasItemMeta()) return;
+
+        ItemMeta meta = helmet.getItemMeta();
+        if (meta.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, PDC_RESPIRATION_RPG_MANAGED),
+            PersistentDataType.BYTE)) return;
+
+        int level = meta.getEnchantLevel(Enchantment.RESPIRATION);
+        if (level <= 0) return;
+
+        String key = Enchantment.RESPIRATION.getKey().getKey();
+        if (!levelConfig.hasRespirationEffect(key)) return;
+
+        double secondsPerLevel = levelConfig.getRespirationSecondsPerLevel(key)
+            + levelConfig.getRespirationSecondsBonus(key);
+
+        /* 有效总 tick 数：原版 300 + 水下呼吸额外时间 */
+        double effectiveTotal = 300.0 + level * secondsPerLevel * 20.0;
+        double drainFactor = 300.0 / effectiveTotal; // 每次应消耗的实际比例
+
+        int decrease = currentAir - newAir; // >0
+        double fractionalDrain = decrease * drainFactor
+            + respirationFractionalRefund.getOrDefault(player.getUniqueId(), 0.0);
+        int actualDrain = (int) fractionalDrain;
+        respirationFractionalRefund.put(player.getUniqueId(), fractionalDrain - actualDrain);
+
+        event.setAmount(Math.max(0, currentAir - actualDrain));
     }
 
     /* ==================== 第三步：横扫之刃范围伤害 ==================== */
@@ -266,14 +761,16 @@ public class LevelEffectListener implements Listener {
         if (!levelConfig.hasSweepEffect(key)) return;
 
         double percentPerLevel = levelConfig.getSweepDamagePercentPerLevel(key);
-        double range = levelConfig.getSweepRange(key);
+        double range = levelConfig.getSweepRange(key)
+            + levelConfig.getSweepRangeBonus(key);
         if (range <= 0) range = 3.0;
 
         /* 最终伤害（经锋利/护甲等全部计算后） */
         double finalDamage = event.getFinalDamage();
 
-        /* 横扫伤害 = 最终伤害 × (横扫百分比 × 等级 / 100) */
-        double sweepPercent = percentPerLevel * sweepLevel / 100.0;
+        /* 横扫伤害 = 最终伤害 × (横扫百分比 × 等级 / 100 + bonus/100) */
+        double sweepPercent = percentPerLevel * sweepLevel / 100.0
+            + levelConfig.getSweepPercentBonus(key) / 100.0;
         double sweepDamage = finalDamage * sweepPercent;
 
         if (sweepDamage <= 0) return;
@@ -400,9 +897,10 @@ public class LevelEffectListener implements Listener {
             return;
         }
 
-        /* 计算保留概率 = min(每级概率 × 等级, 100%) */
+        /* 计算保留概率 = min(每级概率 × 等级 / 100 + bonus/100, 100%) */
         double chancePerLevel = levelConfig.getSilkTouchKeepChancePerLevel(key);
-        double chance = Math.min(chancePerLevel * silkLevel / 100.0, 1.0);
+        double chance = Math.min(chancePerLevel * silkLevel / 100.0
+            + levelConfig.getSilkTouchChanceBonus(key) / 100.0, 1.0);
 
         if (ThreadLocalRandom.current().nextDouble() >= chance) {
             /* 未触发，正常破坏 */
@@ -543,8 +1041,10 @@ public class LevelEffectListener implements Listener {
         if (level <= 0) return 1;
 
         String key = enchant.getKey().getKey();
-        double baseProb = levelConfig.getFortuneBaseProbability(key);
-        double decrement = levelConfig.getFortuneProbDecrement(key);
+        double baseProb = levelConfig.getFortuneBaseProbability(key)
+            + levelConfig.getFortuneBaseProbBonus(key);
+        double decrement = levelConfig.getFortuneProbDecrement(key)
+            + levelConfig.getFortuneDecrementBonus(key);
 
         ThreadLocalRandom rand = ThreadLocalRandom.current();
 
@@ -628,7 +1128,8 @@ public class LevelEffectListener implements Listener {
         String key = Enchantment.EFFICIENCY.getKey().getKey();
         if (!levelConfig.hasChainEffect(key)) return;
 
-        double range = levelConfig.getChainRange(key);
+        double range = levelConfig.getChainRange(key)
+            + levelConfig.getChainRangeBonus(key);
         if (range <= 0) range = 5.0;
 
         Material targetMaterial = brokenBlock.getType();
@@ -665,6 +1166,27 @@ public class LevelEffectListener implements Listener {
         ));
 
         int maxExtra = Math.min(efficiencyLevel, 10);
+
+        /* 水下速掘：玩家在水中时，根据头盔水下速掘等级缩链挖掘数量 */
+        if (maxExtra > 1 && player.getRemainingAir() < player.getMaximumAir()) {
+            ItemStack helmet = player.getInventory().getHelmet();
+            if (helmet != null && helmet.hasItemMeta()) {
+                ItemMeta hMeta = helmet.getItemMeta();
+                if (!hMeta.getPersistentDataContainer().has(
+                    new NamespacedKey(plugin, PDC_AQUA_AFFINITY_RPG_MANAGED),
+                    PersistentDataType.BYTE)) {
+                    int aquaLevel = hMeta.getEnchantLevel(Enchantment.AQUA_AFFINITY);
+                    String aquaKey = Enchantment.AQUA_AFFINITY.getKey().getKey();
+                    if (aquaLevel > 0 && levelConfig.hasAquaAffinityChainEffect(aquaKey)) {
+                        double percentPerLevel = levelConfig.getAquaAffinityChainPercentPerLevel(aquaKey);
+                        double bonus = levelConfig.getAquaAffinityChainPercentBonus(aquaKey);
+                        double chainPercent = aquaLevel * percentPerLevel + bonus;
+                        if (chainPercent > 100.0) chainPercent = 100.0;
+                        maxExtra = Math.max(1, (int)Math.ceil(maxExtra * chainPercent / 100.0));
+                    }
+                }
+            }
+        }
 
         inChainMining.set(true);
         try {
@@ -743,6 +1265,38 @@ public class LevelEffectListener implements Listener {
      * 物品 PDC 中设置此键 → 抢夺系统跳过，RPG 接管
      */
     private static final String PDC_LOOTING_RPG_MANAGED = "looting_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 经验修补系统跳过，RPG 接管
+     */
+    private static final String PDC_MENDING_RPG_MANAGED = "mending_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 保护附魔系统跳过，RPG 接管
+     */
+    private static final String PDC_PROTECTION_RPG_MANAGED = "protection_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 火焰燃烧时间减免跳过该件，RPG 接管
+     */
+    private static final String PDC_FIRE_TICK_RPG_MANAGED = "fire_tick_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 爆炸击退减免跳过该件，RPG 接管
+     */
+    private static final String PDC_BLAST_KNOCKBACK_RPG_MANAGED = "blast_knockback_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 弹射物击退减免跳过该件，RPG 接管
+     */
+    private static final String PDC_PROJECTILE_KNOCKBACK_RPG_MANAGED = "projectile_knockback_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 荆棘反伤跳过该件，RPG 接管
+     */
+    private static final String PDC_THORNS_RPG_MANAGED = "thorns_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 水下呼吸跳过该头盔，RPG 接管
+     */
+    private static final String PDC_RESPIRATION_RPG_MANAGED = "respiration_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 水下速掘链挖掘限制跳过该头盔，RPG 接管
+     */
+    private static final String PDC_AQUA_AFFINITY_RPG_MANAGED = "aqua_affinity_rpg_managed";
 
     /**
      * LOWEST 优先级：耐久附魔效果
@@ -791,18 +1345,22 @@ public class LevelEffectListener implements Listener {
         ThreadLocalRandom rand = ThreadLocalRandom.current();
 
         /* 第一判定：不消耗耐久 */
-        double saveProb = Math.min(saveChance * level / 100.0, 1.0);
+        double saveProb = Math.min(saveChance * level / 100.0
+            + levelConfig.getUnbreakingSaveBonus(key) / 100.0, 1.0);
         if (rand.nextDouble() < saveProb) {
             event.setDamage(0);
             return;
         }
 
         /* 第二判定：返还耐久
-         * 返还量 = ceil(基础消耗 × 返还倍率 × 等级 / 100)
+         * 返还量 = ceil(基础消耗 × (返还倍率+bonus) × 等级 / 100)
          * 默认：1级=50%, 2级=100%, ..., 10级=500% */
-        double returnProb = Math.min(returnChance * level / 100.0, 1.0);
+        double returnProb = Math.min(returnChance * level / 100.0
+            + levelConfig.getUnbreakingReturnBonus(key) / 100.0, 1.0);
         if (rand.nextDouble() < returnProb) {
-            int returnAmount = (int) Math.ceil(baseDamage * returnRate * level / 100.0);
+            int returnAmount = (int) Math.ceil(baseDamage
+                * (returnRate + levelConfig.getUnbreakingReturnRateBonus(key))
+                * level / 100.0);
 
             /* 取消原版耐久消耗，手动计算净效果 */
             event.setDamage(0);
@@ -828,6 +1386,105 @@ public class LevelEffectListener implements Listener {
 
         /* 第三（默认）：正常消耗基础耐久（剥离原版） */
         event.setDamage(baseDamage);
+    }
+
+    /* ==================== 经验修补 ==================== */
+
+    /**
+     * LOWEST 优先级：拦截经验获取，使用自定义 Mending 公式修复物品
+     * <p>
+     * 修复量 = max(1, 等级 × 倍率) 每经验（默认 1 级 = 1 耐久/经验，V 级 = 5）
+     * mending-durability-per-xp 每级每经验修复耐久点数
+     * bonus 直接加到最终修复量上
+     * <p>
+     * RPG 窗口：物品 PDC 中有 {@code mending_rpg_managed} 标记时跳过，
+     * 由 RPG 模块负责处理。
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onPlayerExpChange(PlayerExpChangeEvent event) {
+        /* 重入防护：由 giveExp() 触发的递归直接跳过 */
+        if (inMendingProcess.get()) return;
+
+        int totalXp = event.getAmount();
+        if (totalXp <= 0) return;
+
+        Player player = event.getPlayer();
+
+        /* 收集有自定义 Mending 的物品（手持 + 护甲） */
+        List<ItemStack> mendingItems = new ArrayList<>();
+        addMendingItem(mendingItems, player.getInventory().getItemInMainHand());
+        addMendingItem(mendingItems, player.getInventory().getItemInOffHand());
+        addMendingItem(mendingItems, player.getInventory().getHelmet());
+        addMendingItem(mendingItems, player.getInventory().getChestplate());
+        addMendingItem(mendingItems, player.getInventory().getLeggings());
+        addMendingItem(mendingItems, player.getInventory().getBoots());
+
+        if (mendingItems.isEmpty()) return;
+
+        int remainingXp = totalXp;
+        boolean anyRepaired = false;
+
+        for (ItemStack item : mendingItems) {
+            if (remainingXp <= 0) break;
+
+            ItemMeta itemMeta = item.getItemMeta();
+            if (!(itemMeta instanceof org.bukkit.inventory.meta.Damageable dm)) continue;
+
+            int currentDamage = dm.getDamage();
+            if (currentDamage <= 0) continue;
+
+            int level = itemMeta.getEnchantLevel(Enchantment.MENDING);
+            String key = Enchantment.MENDING.getKey().getKey();
+
+            double multiplier = levelConfig.getMendingDurabilityPerXp(key);
+            double bonus = levelConfig.getMendingDurabilityBonus(key);
+            double durabilityPerXp = Math.max(1, multiplier * level + bonus);
+
+            /* XP 需求量 = ceil(当前损伤 / 每经验修复量) */
+            int xpNeeded = (int) Math.ceil(currentDamage / durabilityPerXp);
+            int xpToUse = Math.min(remainingXp, xpNeeded);
+
+            int repairAmount = (int) (xpToUse * durabilityPerXp);
+            int newDamage = Math.max(0, currentDamage - repairAmount);
+            dm.setDamage(newDamage);
+            item.setItemMeta(dm);
+
+            remainingXp -= xpToUse;
+            anyRepaired = true;
+        }
+
+        if (anyRepaired) {
+            /* 已处理，取消原版 XP 获取（同时阻止原版 Mending） */
+            event.setAmount(0);
+            /* 返还剩余 XP */
+            if (remainingXp > 0) {
+                inMendingProcess.set(true);
+                try {
+                    player.giveExp(remainingXp);
+                } finally {
+                    inMendingProcess.set(false);
+                }
+            }
+        }
+    }
+
+    /**
+     * 将物品添加到 Mending 列表（检查 PDC 标记 + 附魔）
+     */
+    private void addMendingItem(List<ItemStack> list, ItemStack item) {
+        if (item == null || item.getType().isAir() || !item.hasItemMeta()) return;
+
+        ItemMeta meta = item.getItemMeta();
+
+        /* RPG 模块接管：有标记则跳过 */
+        if (meta.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, PDC_MENDING_RPG_MANAGED),
+            PersistentDataType.BYTE)) return;
+
+        if (meta.getEnchantLevel(Enchantment.MENDING) > 0
+            && levelConfig.hasMendingEffect(Enchantment.MENDING.getKey().getKey())) {
+            list.add(item);
+        }
     }
 
     /* ==================== 抢夺（掉落物） ==================== */
@@ -861,7 +1518,8 @@ public class LevelEffectListener implements Listener {
         ThreadLocalRandom random = ThreadLocalRandom.current();
 
         if (rareChancePercentPerLevel > 0) {
-            double rareBonusChance = rareChancePercentPerLevel * lootingLevel / 100.0;
+            double rareBonusChance = rareChancePercentPerLevel * lootingLevel / 100.0
+                + levelConfig.getLootingRareChanceBonus(key) / 100.0;
             for (ItemStack drop : event.getDrops()) {
                 if (random.nextDouble() < rareBonusChance && drop.getAmount() > 0) {
                     drop.setAmount(drop.getAmount() + 1);
@@ -870,7 +1528,8 @@ public class LevelEffectListener implements Listener {
         }
 
         if (maxDropPercentPerLevel > 0) {
-            double maxDropBonus = maxDropPercentPerLevel * lootingLevel / 100.0;
+            double maxDropBonus = maxDropPercentPerLevel * lootingLevel / 100.0
+                + levelConfig.getLootingMaxDropBonus(key) / 100.0;
             for (ItemStack drop : event.getDrops()) {
                 if (drop.getAmount() > 0 && drop.getMaxStackSize() > drop.getAmount()) {
                     int extra = (int) Math.round(drop.getAmount() * maxDropBonus);

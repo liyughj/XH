@@ -214,6 +214,19 @@ public class EnchantmentLevelManager {
      * @return 升级的附魔列表
      */
     public List<Enchantment> addExpToEnchantments(ItemStack item, int amount) {
+        return addExpToEnchantments(item, amount, null);
+    }
+
+    /**
+     * 为指定行为类别的附魔添加经验
+     * 只有类别匹配（或 UNIVERSAL）的附魔才会获得经验
+     *
+     * @param item      物品
+     * @param amount    经验数量
+     * @param action    行为类别（null = 所有附魔都获得）
+     * @return 升级的附魔列表
+     */
+    public List<Enchantment> addExpToEnchantments(ItemStack item, int amount, EnchantmentLevelConfig.ExpCategory action) {
         List<Enchantment> upgraded = new ArrayList<>();
         if (item == null || !item.hasItemMeta()) return upgraded;
 
@@ -224,6 +237,11 @@ public class EnchantmentLevelManager {
         boolean anyChanged = false;
 
         for (Enchantment enchant : enchants) {
+            /* 如果指定了行为类别，跳过不匹配的附魔 */
+            if (action != null && !EnchantmentLevelConfig.matchesCategory(enchant, action)) {
+                continue;
+            }
+
             EnchantmentLevelData data = dataMap.get(enchant);
             if (data == null) continue;
 
