@@ -37,10 +37,34 @@ public class LevelConfig {
     private static final double DEFAULT_UNBREAKING_RETURN_RATE = 50.0; // 每级返还耐久倍率（%）
     private static final double DEFAULT_MENDING_DURABILITY_PER_XP = 1.0; // 每级每经验修复耐久点数
     private static final double DEFAULT_PROTECTION_PERCENT = 2.0;    // 每级伤害减免百分比（%）
+    private static final double DEFAULT_FEATHER_FALLING_PERCENT = 5.0; // 摔落保护每级伤害减免百分比（%）
     private static final double DEFAULT_THORNS_CHANCE = 2.0;          // 每级荆棘触发概率（%）
     private static final double DEFAULT_THORNS_DAMAGE = 2.0;          // 每级荆棘反伤百分比（%）
     private static final double DEFAULT_RESPIRATION_SECONDS = 3.0;    // 每级水下呼吸额外秒数
     private static final double DEFAULT_AQUA_AFFINITY_CHAIN_PERCENT = 5.0; // 每级恢复链挖掘效能（%）
+    private static final double DEFAULT_FROST_WALKER_BASE_RADIUS = 2.0;     // 冰霜行者基础半径
+    private static final double DEFAULT_FROST_WALKER_RADIUS_PER_LEVEL = 1.0; // 冰霜行者每级额外半径
+    private static final double DEFAULT_FROST_WALKER_MELT_BASE_SECONDS = 2.0;      // 冰块基础滞留时间（秒）
+    private static final double DEFAULT_FROST_WALKER_MELT_SECONDS_PER_LEVEL = 0.5; // 每级增加滞留时间（秒）
+    private static final double DEFAULT_POWER_DAMAGE_PERCENT = 12.0; // 力量每级射弹伤害（%）
+    private static final double DEFAULT_PUNCH_KNOCKBACK_BLOCKS = 1.0; // 冲击每级击退（格）
+    private static final int DEFAULT_FLAME_FIRE_TICKS = 80;           // 火矢每级燃烧（tick）
+    private static final double DEFAULT_INFINITY_DAMAGE_PERCENT = 3.0; // 无限每级射弹伤害（%）
+    private static final double DEFAULT_MULTISHOT_EXTRA_ARROWS = 1.0;  // 多重射击每级额外箭数
+    private static final double DEFAULT_QUICK_CHARGE_DAMAGE_PERCENT = 1.5; // 快速填装每级伤害（%）
+    private static final double DEFAULT_PIERCING_DAMAGE_PERCENT = 2.0;  // 穿透每级伤害（%）
+    private static final double DEFAULT_IMPALING_DAMAGE_PERCENT = 5.0; // 穿刺每级伤害（%）
+    private static final double DEFAULT_CHANNELING_DAMAGE_PERCENT = 10.0; // 引雷每级伤害（%）
+    private static final double DEFAULT_LOYALTY_DAMAGE_PERCENT = 2.0;  // 忠诚每级投掷伤害（%）
+    private static final double DEFAULT_RIPTIDE_DAMAGE_PERCENT = 3.0;  // 激流每级攻击增益（%）
+    private static final double DEFAULT_LUCK_OF_THE_SEA_BASE_PROB = 50.0; // 海之眷顾1级触发概率（%）
+    private static final double DEFAULT_LUCK_OF_THE_SEA_DECREMENT = 5.0;  // 海之眷顾每高1级概率削减（%）
+    private static final double DEFAULT_LURE_CHANCE_PER_LEVEL = 2.0;  // 饵钓每级额外一钩概率（%）
+    private static final double DEFAULT_DENSITY_DAMAGE_PERCENT_PER_BLOCK = 10.0; // 致密每格伤害（%）
+    private static final double DEFAULT_DENSITY_MAX_MULTIPLIER_PERCENT = 200.0;  // 致密最大额外伤害上限（%）
+    private static final double DEFAULT_BREACH_ARMOR_BYPASS_PERCENT = 15.0;  // 破甲每级护甲穿透（%）
+    private static final double DEFAULT_WIND_BURST_HEIGHT_PER_LEVEL = 2.0;   // 风爆每级弹起高度（格）
+    private static final double DEFAULT_WIND_BURST_SLOW_FALL_TICKS = 20;     // 风爆每级缓降时长（tick）
 
     /* 配置键名 */
     private static final String KEY_DAMAGE_PERCENT = "damage-percent-per-level";
@@ -63,6 +87,17 @@ public class LevelConfig {
     private static final String KEY_THORNS_DAMAGE = "thorns-damage-per-level";
     private static final String KEY_RESPIRATION_SECONDS = "respiration-seconds-per-level";
     private static final String KEY_AQUA_AFFINITY_CHAIN_PERCENT = "aqua-affinity-chain-percent-per-level";
+    private static final String KEY_FROST_WALKER_BASE_RADIUS = "frost-walker-base-radius";
+    private static final String KEY_FROST_WALKER_RADIUS_PER_LEVEL = "frost-walker-radius-per-level";
+    private static final String KEY_FROST_WALKER_MELT_BASE_SECONDS = "frost-walker-melt-base-seconds";
+    private static final String KEY_FROST_WALKER_MELT_SECONDS_PER_LEVEL = "frost-walker-melt-seconds-per-level";
+    private static final String KEY_MULTISHOT_EXTRA_ARROWS = "multishot-extra-arrows-per-level";
+    private static final String KEY_LURE_CHANCE = "lure-chance-per-level";
+    private static final String KEY_DENSITY_DAMAGE_PER_BLOCK = "density-damage-percent-per-block";
+    private static final String KEY_DENSITY_MAX_MULTIPLIER = "density-max-multiplier-percent";
+    private static final String KEY_BREACH_ARMOR_BYPASS = "breach-armor-bypass-percent-per-level";
+    private static final String KEY_WIND_BURST_HEIGHT = "wind-burst-height-per-level";
+    private static final String KEY_WIND_BURST_SLOW_FALL = "wind-burst-slow-fall-ticks-per-level";
 
     private final JavaPlugin plugin;
     private FileConfiguration config;
@@ -204,6 +239,16 @@ public class LevelConfig {
         bonusOverrides.put(bonusKey(enchantKey, "aqua_affinity"), bonus);
     }
 
+    /** 深海探索者水下伤害 bonus（%） */
+    public void setBonusDepthStriderDamage(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "depth_strider"), bonus);
+    }
+
+    /** 冰霜行者额外半径 bonus */
+    public void setBonusFrostWalkerRadius(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "frost_walker"), bonus);
+    }
+
     /** 清除指定附魔的所有 bonus */
     public void clearBonuses(String enchantKey) {
         String prefix = enchantKey.toUpperCase() + ".";
@@ -247,6 +292,17 @@ public class LevelConfig {
         public final double thornsDamagePerLevel;
         public final double respirationSecondsPerLevel;
         public final double aquaAffinityChainPercentPerLevel;
+        public final double frostWalkerBaseRadius;
+        public final double frostWalkerRadiusPerLevel;
+        public final double frostWalkerMeltBaseSeconds;
+        public final double frostWalkerMeltSecondsPerLevel;
+        public final double multishotExtraArrowsPerLevel;
+        public final double lureChancePerLevel;
+        public final double densityDamagePercentPerBlock;
+        public final double densityMaxMultiplierPercent;
+        public final double breachArmorBypassPercentPerLevel;
+        public final double windBurstHeightPerLevel;
+        public final double windBurstSlowFallTicksPerLevel;
 
         public EnchantEffect(String enchantKey) {
             this.enchantKey = enchantKey;
@@ -270,6 +326,17 @@ public class LevelConfig {
             this.thornsDamagePerLevel = 0;
             this.respirationSecondsPerLevel = 0;
             this.aquaAffinityChainPercentPerLevel = 0;
+            this.frostWalkerBaseRadius = 0;
+            this.frostWalkerRadiusPerLevel = 0;
+            this.frostWalkerMeltBaseSeconds = 0;
+            this.frostWalkerMeltSecondsPerLevel = 0;
+            this.multishotExtraArrowsPerLevel = 0;
+            this.lureChancePerLevel = 0;
+            this.densityDamagePercentPerBlock = 0;
+            this.densityMaxMultiplierPercent = 0;
+            this.breachArmorBypassPercentPerLevel = 0;
+            this.windBurstHeightPerLevel = 0;
+            this.windBurstSlowFallTicksPerLevel = 0;
         }
 
         public EnchantEffect(String enchantKey, double damagePercentPerLevel, double sweepDamagePercentPerLevel,
@@ -282,7 +349,14 @@ public class LevelConfig {
                                double protectionPercentPerLevel,
                                double thornsChancePerLevel, double thornsDamagePerLevel,
                                double respirationSecondsPerLevel,
-                               double aquaAffinityChainPercentPerLevel) {
+                               double aquaAffinityChainPercentPerLevel,
+                               double frostWalkerBaseRadius, double frostWalkerRadiusPerLevel,
+                               double frostWalkerMeltBaseSeconds, double frostWalkerMeltSecondsPerLevel,
+                                double multishotExtraArrowsPerLevel,
+                                 double lureChancePerLevel,
+                                 double densityDamagePercentPerBlock, double densityMaxMultiplierPercent,
+                                 double breachArmorBypassPercentPerLevel,
+                                 double windBurstHeightPerLevel, double windBurstSlowFallTicksPerLevel) {
             this.enchantKey = enchantKey;
             this.damagePercentPerLevel = damagePercentPerLevel;
             this.sweepDamagePercentPerLevel = sweepDamagePercentPerLevel;
@@ -304,6 +378,17 @@ public class LevelConfig {
             this.thornsDamagePerLevel = thornsDamagePerLevel;
             this.respirationSecondsPerLevel = respirationSecondsPerLevel;
             this.aquaAffinityChainPercentPerLevel = aquaAffinityChainPercentPerLevel;
+            this.frostWalkerBaseRadius = frostWalkerBaseRadius;
+            this.frostWalkerRadiusPerLevel = frostWalkerRadiusPerLevel;
+            this.frostWalkerMeltBaseSeconds = frostWalkerMeltBaseSeconds;
+            this.frostWalkerMeltSecondsPerLevel = frostWalkerMeltSecondsPerLevel;
+            this.multishotExtraArrowsPerLevel = multishotExtraArrowsPerLevel;
+            this.lureChancePerLevel = lureChancePerLevel;
+            this.densityDamagePercentPerBlock = densityDamagePercentPerBlock;
+            this.densityMaxMultiplierPercent = densityMaxMultiplierPercent;
+            this.breachArmorBypassPercentPerLevel = breachArmorBypassPercentPerLevel;
+            this.windBurstHeightPerLevel = windBurstHeightPerLevel;
+            this.windBurstSlowFallTicksPerLevel = windBurstSlowFallTicksPerLevel;
         }
     }
 
@@ -379,7 +464,7 @@ public class LevelConfig {
         cfg.set("fire_protection." + KEY_PROTECTION_PERCENT, DEFAULT_PROTECTION_PERCENT);
         cfg.set("blast_protection." + KEY_PROTECTION_PERCENT, DEFAULT_PROTECTION_PERCENT);
         cfg.set("projectile_protection." + KEY_PROTECTION_PERCENT, DEFAULT_PROTECTION_PERCENT);
-        cfg.set("feather_falling." + KEY_PROTECTION_PERCENT, DEFAULT_PROTECTION_PERCENT);
+        cfg.set("feather_falling." + KEY_PROTECTION_PERCENT, DEFAULT_FEATHER_FALLING_PERCENT);
 
         /* 荆棘：每级 2% 触发概率 / 2% 反伤（全套荆棘 X = 80%/80%） */
         cfg.set("thorns." + KEY_THORNS_CHANCE, DEFAULT_THORNS_CHANCE);
@@ -390,6 +475,52 @@ public class LevelConfig {
 
         /* 水下速掘：每级恢复 5% 链挖掘效能（满级 X = 50%） */
         cfg.set("aqua_affinity." + KEY_AQUA_AFFINITY_CHAIN_PERCENT, DEFAULT_AQUA_AFFINITY_CHAIN_PERCENT);
+
+        /* 深海探索者：每级+2% 水下伤害（满级 X = 20%） */
+        cfg.set("depth_strider." + KEY_DAMAGE_PERCENT, 2.0);
+
+        /* 灵魂疾行：每级+2% 魂沙/魂土上伤害（满级 X = 20%） */
+        cfg.set("soul_speed." + KEY_DAMAGE_PERCENT, 2.0);
+
+        /* 迅捷潜行：每级+2% 潜行时伤害（满级 X = 20%） */
+        cfg.set("swift_sneak." + KEY_DAMAGE_PERCENT, 2.0);
+
+        /* 冰霜行者：基础半径 2 + 每级 +1 半径，基础滞留 2s + 每级 +0.5s */
+        cfg.set("frost_walker." + KEY_FROST_WALKER_BASE_RADIUS, DEFAULT_FROST_WALKER_BASE_RADIUS);
+        cfg.set("frost_walker." + KEY_FROST_WALKER_RADIUS_PER_LEVEL, DEFAULT_FROST_WALKER_RADIUS_PER_LEVEL);
+        cfg.set("frost_walker." + KEY_FROST_WALKER_MELT_BASE_SECONDS, DEFAULT_FROST_WALKER_MELT_BASE_SECONDS);
+        cfg.set("frost_walker." + KEY_FROST_WALKER_MELT_SECONDS_PER_LEVEL, DEFAULT_FROST_WALKER_MELT_SECONDS_PER_LEVEL);
+
+        /* 弓附魔 */
+        cfg.set("power." + KEY_DAMAGE_PERCENT, DEFAULT_POWER_DAMAGE_PERCENT);
+        cfg.set("punch." + KEY_KNOCKBACK_BLOCKS, DEFAULT_PUNCH_KNOCKBACK_BLOCKS);
+        cfg.set("flame." + KEY_FIRE_TICKS, DEFAULT_FLAME_FIRE_TICKS);
+        cfg.set("infinity." + KEY_DAMAGE_PERCENT, DEFAULT_INFINITY_DAMAGE_PERCENT);
+
+        /* 多重射击：每级 +1 根额外箭 */
+        cfg.set("multishot." + KEY_MULTISHOT_EXTRA_ARROWS, DEFAULT_MULTISHOT_EXTRA_ARROWS);
+
+        /* 弩附魔 */
+        cfg.set("quick_charge." + KEY_DAMAGE_PERCENT, DEFAULT_QUICK_CHARGE_DAMAGE_PERCENT);
+        cfg.set("piercing." + KEY_DAMAGE_PERCENT, DEFAULT_PIERCING_DAMAGE_PERCENT);
+
+        /* 三叉戟附魔 */
+        cfg.set("impaling." + KEY_DAMAGE_PERCENT, DEFAULT_IMPALING_DAMAGE_PERCENT);
+        cfg.set("channeling." + KEY_DAMAGE_PERCENT, DEFAULT_CHANNELING_DAMAGE_PERCENT);
+        cfg.set("loyalty." + KEY_DAMAGE_PERCENT, DEFAULT_LOYALTY_DAMAGE_PERCENT);
+        cfg.set("riptide." + KEY_DAMAGE_PERCENT, DEFAULT_RIPTIDE_DAMAGE_PERCENT);
+
+        /* 钓鱼附魔 — 海之眷顾复用时运级联概率键名，饵钓独立 */
+        cfg.set("luck_of_the_sea." + KEY_FORTUNE_BASE_PROB, DEFAULT_LUCK_OF_THE_SEA_BASE_PROB);
+        cfg.set("luck_of_the_sea." + KEY_FORTUNE_DECREMENT, DEFAULT_LUCK_OF_THE_SEA_DECREMENT);
+        cfg.set("lure." + KEY_LURE_CHANCE, DEFAULT_LURE_CHANCE_PER_LEVEL);
+
+        /* 锤附魔 */
+        cfg.set("density." + KEY_DENSITY_DAMAGE_PER_BLOCK, DEFAULT_DENSITY_DAMAGE_PERCENT_PER_BLOCK);
+        cfg.set("density." + KEY_DENSITY_MAX_MULTIPLIER, DEFAULT_DENSITY_MAX_MULTIPLIER_PERCENT);
+        cfg.set("breach." + KEY_BREACH_ARMOR_BYPASS, DEFAULT_BREACH_ARMOR_BYPASS_PERCENT);
+        cfg.set("wind_burst." + KEY_WIND_BURST_HEIGHT, DEFAULT_WIND_BURST_HEIGHT_PER_LEVEL);
+        cfg.set("wind_burst." + KEY_WIND_BURST_SLOW_FALL, DEFAULT_WIND_BURST_SLOW_FALL_TICKS);
 
         List<String> headerLines = Arrays.asList(
             "附魔等级效果配置文件",
@@ -410,11 +541,34 @@ public class LevelConfig {
             "    return-chance-per-level: <耐久每级返还概率（%），默认2.5>",
             "    return-rate-per-level: <耐久每级返还倍率（%），默认50.0>",
             "    mending-durability-per-xp: <每等级每经验修复耐久点数，默认1.0>",
-            "    protection-percent-per-level: <每级伤害减免（%），默认2.0，全套保护X=80%>",
+            "    protection-percent-per-level: <每级伤害减免（%），默认2.0，全套保护X=80%，摔落保护独有默认5.0%>",
             "    thorns-chance-per-level: <每级荆棘触发概率（%），默认2.0>",
             "    thorns-damage-per-level: <每级荆棘反伤百分比（%），默认2.0>",
             "    respiration-seconds-per-level: <每级水下呼吸额外秒数，默认3.0，满级X=30s>",
-            "    aqua-affinity-chain-percent-per-level: <每级恢复链挖掘效能（%），默认5.0，满级X=50%>"
+            "    aqua-affinity-chain-percent-per-level: <每级恢复链挖掘效能（%），默认5.0，满级X=50%>",
+            "    深度探索者 depth_strider — damage-percent-per-level（水下伤害%，默认2.0）",
+            "    灵魂疾行 soul_speed — damage-percent-per-level（魂沙/魂土上伤害%，默认2.0）",
+            "    迅捷潜行 swift_sneak — damage-percent-per-level（潜行时伤害%，默认2.0）",
+            "    冰霜行者 frost_walker — frost-walker-base-radius（默认2.0）",
+            "                              frost-walker-radius-per-level（默认1.0）",
+            "                              frost-walker-melt-base-seconds（默认2.0）",
+            "                              frost-walker-melt-seconds-per-level（默认0.5）",
+            "    弓附魔 power/punch/flame — damage-percent-per-level（默认12.0，power独有）",
+            "                                 knockback-blocks-per-level（默认1.0，punch独有）",
+            "                                 fire-ticks-per-level（默认80，flame独有）",
+            "    无限 infinity — damage-percent-per-level（默认3.0，保留原版无限箭矢）",
+            "    多重射击 multishot — multishot-extra-arrows-per-level（默认1.0，每级+1箭）",
+            "    快速填装 quick_charge — damage-percent-per-level（默认1.5）",
+            "    穿透 piercing — damage-percent-per-level（默认2.0）",
+            "    三叉戟 impaling/channeling/loyalty/riptide — damage-percent-per-level",
+            "        (穿刺5.0/引雷10.0/忠诚2.0/激流3.0)",
+            "    海之眷顾 luck_of_the_sea — fortune-base-probability/fortune-probability-decrement",
+            "        （复用时运级联概率，默认50.0/5.0）",
+            "    饵钓 lure — lure-chance-per-level（每级+%额外一钩，默认2.0）",
+            "    锤附魔 density/breach/wind_burst — 见下表",
+            "        致密 density: density-damage-percent-per-block(10.0)/density-max-multiplier-percent(200.0)",
+            "        破甲 breach: breach-armor-bypass-percent-per-level（默认15.0）",
+            "        风爆 wind_burst: wind-burst-height-per-level(2.0)/wind-burst-slow-fall-ticks-per-level(20)"
         );
         cfg.options().setHeader(headerLines);
 
@@ -474,6 +628,27 @@ public class LevelConfig {
                 effect.respirationSecondsPerLevel);
             double aquaAffinityChainPercent = config.getDouble(key + "." + KEY_AQUA_AFFINITY_CHAIN_PERCENT,
                 effect.aquaAffinityChainPercentPerLevel);
+            double frostWalkerBaseRadius = config.getDouble(key + "." + KEY_FROST_WALKER_BASE_RADIUS,
+                effect.frostWalkerBaseRadius);
+            double frostWalkerRadiusPerLevel = config.getDouble(key + "." + KEY_FROST_WALKER_RADIUS_PER_LEVEL,
+                effect.frostWalkerRadiusPerLevel);
+            double frostWalkerMeltBaseSeconds = config.getDouble(key + "." + KEY_FROST_WALKER_MELT_BASE_SECONDS,
+                effect.frostWalkerMeltBaseSeconds);
+            double frostWalkerMeltSecondsPerLevel = config.getDouble(key + "." + KEY_FROST_WALKER_MELT_SECONDS_PER_LEVEL,
+                effect.frostWalkerMeltSecondsPerLevel);
+            double multishotExtraArrows = config.getDouble(key + "." + KEY_MULTISHOT_EXTRA_ARROWS,
+                effect.multishotExtraArrowsPerLevel);
+            double lureChance = config.getDouble(key + "." + KEY_LURE_CHANCE, effect.lureChancePerLevel);
+            double densityDamagePerBlock = config.getDouble(key + "." + KEY_DENSITY_DAMAGE_PER_BLOCK,
+                effect.densityDamagePercentPerBlock);
+            double densityMaxMultiplier = config.getDouble(key + "." + KEY_DENSITY_MAX_MULTIPLIER,
+                effect.densityMaxMultiplierPercent);
+            double breachArmorBypass = config.getDouble(key + "." + KEY_BREACH_ARMOR_BYPASS,
+                effect.breachArmorBypassPercentPerLevel);
+            double windBurstHeight = config.getDouble(key + "." + KEY_WIND_BURST_HEIGHT,
+                effect.windBurstHeightPerLevel);
+            double windBurstSlowFall = config.getDouble(key + "." + KEY_WIND_BURST_SLOW_FALL,
+                effect.windBurstSlowFallTicksPerLevel);
 
             effects.put(normalizedKey, new EnchantEffect(key,
                 damagePercent, sweepPercent, sweepRange, fireTicks, knockbackBlocks,
@@ -481,7 +656,12 @@ public class LevelConfig {
                 fortuneBaseProb, fortuneDecrement,
                 unbreakingSave, unbreakingReturn, unbreakingReturnRate, mendingDurability,
                 protectionPercent, thornsChance, thornsDamage, respirationSeconds,
-                aquaAffinityChainPercent));
+                aquaAffinityChainPercent, frostWalkerBaseRadius, frostWalkerRadiusPerLevel,
+                frostWalkerMeltBaseSeconds, frostWalkerMeltSecondsPerLevel,
+                multishotExtraArrows, lureChance,
+                densityDamagePerBlock, densityMaxMultiplier,
+                breachArmorBypass,
+                windBurstHeight, windBurstSlowFall));
         }
     }
 
@@ -645,6 +825,20 @@ public class LevelConfig {
         return getAquaAffinityChainPercentPerLevel(enchantKey) > 0.0;
     }
 
+    public double getFrostWalkerBaseRadius(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.frostWalkerBaseRadius : 0.0;
+    }
+
+    public double getFrostWalkerRadiusPerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.frostWalkerRadiusPerLevel : 0.0;
+    }
+
+    public boolean hasFrostWalkerEffect(String enchantKey) {
+        return getFrostWalkerBaseRadius(enchantKey) > 0.0;
+    }
+
     /* ========== Bonus Getter（外部注入的固定加成值） ========== */
 
     public double getDamagePercentBonus(String enchantKey) {
@@ -737,5 +931,104 @@ public class LevelConfig {
 
     public double getAquaAffinityChainPercentBonus(String enchantKey) {
         return getBonus(enchantKey, "aqua_affinity");
+    }
+
+    public double getDepthStriderDamageBonus(String enchantKey) {
+        return getBonus(enchantKey, "depth_strider");
+    }
+
+    public double getFrostWalkerRadiusBonus(String enchantKey) {
+        return getBonus(enchantKey, "frost_walker");
+    }
+
+    public double getFrostWalkerMeltBaseSeconds(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.frostWalkerMeltBaseSeconds : 0.0;
+    }
+
+    public double getFrostWalkerMeltSecondsPerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.frostWalkerMeltSecondsPerLevel : 0.0;
+    }
+
+    /** 冰霜行者滞留时间 bonus（秒） */
+    public void setBonusFrostWalkerMelt(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "frost_walker_melt"), bonus);
+    }
+
+    public double getFrostWalkerMeltBonus(String enchantKey) {
+        return getBonus(enchantKey, "frost_walker_melt");
+    }
+
+    public double getMultishotExtraArrowsPerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.multishotExtraArrowsPerLevel : 0.0;
+    }
+
+    public boolean hasMultishotEffect(String enchantKey) {
+        return getMultishotExtraArrowsPerLevel(enchantKey) > 0.0;
+    }
+
+    /** 多重射击额外箭数 bonus */
+    public void setBonusMultishotExtraArrows(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "multishot"), bonus);
+    }
+
+    public double getMultishotExtraArrowsBonus(String enchantKey) {
+        return getBonus(enchantKey, "multishot");
+    }
+
+    public double getLureChancePerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.lureChancePerLevel : 0.0;
+    }
+
+    public boolean hasLureEffect(String enchantKey) {
+        return getLureChancePerLevel(enchantKey) > 0.0;
+    }
+
+    /** 饵钓额外一钩概率 bonus（%） */
+    public void setBonusLureChance(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "lure"), bonus);
+    }
+
+    public double getLureChanceBonus(String enchantKey) {
+        return getBonus(enchantKey, "lure");
+    }
+
+    // ---- 锤附魔 getter ----
+
+    public double getDensityDamagePercentPerBlock(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.densityDamagePercentPerBlock : 0.0;
+    }
+
+    public double getDensityMaxMultiplierPercent(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.densityMaxMultiplierPercent : 0.0;
+    }
+
+    public double getBreachArmorBypassPercentPerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.breachArmorBypassPercentPerLevel : 0.0;
+    }
+
+    public double getWindBurstHeightPerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.windBurstHeightPerLevel : 0.0;
+    }
+
+    public double getWindBurstSlowFallTicksPerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.windBurstSlowFallTicksPerLevel : 0.0;
+    }
+
+    /** 致密每格伤害 bonus（%） */
+    public void setBonusDensityDamagePercentPerBlock(String enchantKey, double bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "density"), bonus);
+    }
+
+    public double getDensityDamagePercentPerBlockBonus(String enchantKey) {
+        return getBonus(enchantKey, "density");
     }
 }

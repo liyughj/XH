@@ -9,23 +9,34 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
+import org.bukkit.entity.Arrow;
+import org.bukkit.entity.Trident;
+import org.bukkit.entity.LightningStrike;
+import org.bukkit.entity.Item;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityCombustEvent;
 import org.bukkit.event.entity.EntityAirChangeEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.event.player.PlayerFishEvent;
+import org.bukkit.event.weather.LightningStrikeEvent;
 import org.bukkit.event.player.PlayerExpChangeEvent;
 import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Vector;
 
 import java.util.*;
@@ -54,11 +65,66 @@ public class LevelEffectListener implements Listener {
     private static final Enchantment[] WEAPON_DAMAGE_ENCHANTS = {
         Enchantment.SHARPNESS,
         Enchantment.SMITE,
-        Enchantment.BANE_OF_ARTHROPODS
+        Enchantment.BANE_OF_ARTHROPODS,
+        Enchantment.IMPALING,
+        Enchantment.DENSITY
     };
 
     private final LevelConfig levelConfig;
     private final JavaPlugin plugin;
+
+    /**
+     * LOWEST 优先级：自定义引雷雷击伤害。
+     * <p>
+     * 拦截 LightningStrikeEvent（TRIDENT 原因），取消原版固定 5.0 伤害的落雷，
+     * 改用手动生成 + 自定义伤害倍率。
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void applyCustomLightningDamage(LightningStrikeEvent event) {
+        if (inChannelingStrike.get()) return;
+        if (event.getCause() != LightningStrikeEvent.Cause.TRIDENT) return;
+
+        Location loc = event.getLightning().getLocation();
+        event.setCancelled(true);
+
+        /* 查找邻近有引雷附魔待处理的玩家（通常是 5 格内） */
+        int bestLevel = 0;
+        UUID bestUuid = null;
+        for (Map.Entry<UUID, Integer> entry : pendingChanneling.entrySet()) {
+            Player p = Bukkit.getPlayer(entry.getKey());
+            if (p != null && p.getWorld().equals(loc.getWorld())
+                && p.getLocation().distanceSquared(loc) < 100) { // 10格范围
+                bestLevel = entry.getValue();
+                bestUuid = entry.getKey();
+                break;
+            }
+        }
+
+        if (bestLevel <= 0) return;
+
+        String key = Enchantment.CHANNELING.getKey().getKey();
+        double percent = levelConfig.getDamagePercentPerLevel(key);
+        double bonus = levelConfig.getDamagePercentBonus(key);
+        double multiplier = 1.0 + (percent * bestLevel + bonus) / 100.0;
+
+        /* 手动生成落雷（ThreadLocal 防止递归触发本方法） */
+        inChannelingStrike.set(true);
+        try {
+            LightningStrike lightning = loc.getWorld().strikeLightning(loc);
+
+            /* 对附近实体造成伤害 */
+            for (org.bukkit.entity.Entity e : lightning.getLocation().getWorld()
+                .getNearbyEntities(loc, 2.5, 2.5, 2.5)) {
+                if (!(e instanceof LivingEntity target)) continue;
+                if (e instanceof Player && ((Player)e).equals(Bukkit.getPlayer(bestUuid))) continue;
+                double damage = 5.0 * multiplier;
+                target.damage(damage, lightning);
+            }
+        } finally {
+            inChannelingStrike.set(false);
+            if (bestUuid != null) pendingChanneling.remove(bestUuid);
+        }
+    }
 
     /** 连锁挖掘重入防护：正在连锁破坏中的方块集合 */
     private final Set<Block> chainMiningBlocks = new HashSet<>();
@@ -75,12 +141,199 @@ public class LevelEffectListener implements Listener {
     /** 水下呼吸分数累积（用于精确控制空气消耗率） */
     private final Map<UUID, Double> respirationFractionalRefund = new HashMap<>();
 
+    /** 冰霜行者节流：上次生成冰块的时间戳 */
+    private final Map<UUID, Long> frostWalkerCooldowns = new HashMap<>();
+
+    /** 多重射击节流：上次处理多重射击burst的时间戳 */
+    private final Map<UUID, Long> multishotCooldowns = new HashMap<>();
+
+    /** 引雷重入防护（防止 world.strikeLightning() 递归触发 LightningStrikeEvent） */
+    private final ThreadLocal<Boolean> inChannelingStrike = ThreadLocal.withInitial(() -> false);
+
+    /** 引雷待处理：投掷命中的玩家 UUID → 引雷等级 */
+    private final Map<UUID, Integer> pendingChanneling = new HashMap<>();
+
     public LevelEffectListener(JavaPlugin plugin, LevelConfig levelConfig) {
         this.plugin = plugin;
         this.levelConfig = levelConfig;
     }
 
     /* ==================== 第一步：剥离原版附魔效果 ==================== */
+
+    /**
+     * LOWEST 优先级：多重射击→取消原版3支箭，按等级生成1支正中 + N支随机散射箭。
+     * <p>
+     * 散射范围 ±10°（与原版一致），每级 +1 根额外箭（默认）。
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void applyMultishot(ProjectileLaunchEvent event) {
+        if (!(event.getEntity().getShooter() instanceof Player player)) return;
+
+        ItemStack weapon = player.getInventory().getItemInMainHand();
+        if (weapon == null || weapon.getType() != Material.CROSSBOW) return;
+        if (!weapon.hasItemMeta()) return;
+
+        ItemMeta meta = weapon.getItemMeta();
+        int level = meta.getEnchantLevel(Enchantment.MULTISHOT);
+        if (level <= 0) return;
+
+        String key = Enchantment.MULTISHOT.getKey().getKey();
+        if (!levelConfig.hasMultishotEffect(key)) return;
+
+        /* 节流：原版多重射击 3 支箭同一 tick 发射，只处理首次 */
+        UUID uid = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        Long last = multishotCooldowns.get(uid);
+        boolean isFirst = (last == null || now - last > 100);
+        multishotCooldowns.put(uid, now);
+
+        /* 保存首发箭的速度，然后取消该事件 */
+        Vector velocity = event.getEntity().getVelocity();
+        event.setCancelled(true);
+
+        if (!isFirst) return;
+
+        double extraPerLevel = levelConfig.getMultishotExtraArrowsPerLevel(key);
+        double bonus = levelConfig.getMultishotExtraArrowsBonus(key);
+        int extraArrows = (int) Math.round(level * extraPerLevel + bonus);
+        if (extraArrows <= 0) return;
+
+        /* 1 tick 后生成 1 支正中 + N 支随机散射箭 */
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            player.launchProjectile(Arrow.class, velocity); // 正中
+
+            Random random = new Random();
+            double spreadDeg = 10.0;
+
+            for (int i = 0; i < extraArrows; i++) {
+                double yawOffset = (random.nextDouble() * 2 - 1) * spreadDeg;
+                double yawRad = Math.toRadians(yawOffset);
+
+                Vector dir = velocity.clone();
+                double cos = Math.cos(yawRad);
+                double sin = Math.sin(yawRad);
+                double newX = dir.getX() * cos - dir.getZ() * sin;
+                double newZ = dir.getX() * sin + dir.getZ() * cos;
+                dir.setX(newX).setZ(newZ);
+
+                /* 微小垂直随机，让散射更自然 */
+                double pitchOffset = (random.nextDouble() * 2 - 1) * 2.0;
+                double pitchRad = Math.toRadians(pitchOffset);
+                double xzLen = Math.sqrt(dir.getX() * dir.getX() + dir.getZ() * dir.getZ());
+                if (xzLen > 0.001) {
+                    double cosP = Math.cos(pitchRad);
+                    double sinP = Math.sin(pitchRad);
+                    double newY = dir.getY() * cosP - xzLen * sinP;
+                    double scale = (xzLen * cosP + dir.getY() * sinP) / xzLen;
+                    dir.setX(dir.getX() * scale);
+                    dir.setZ(dir.getZ() * scale);
+                    dir.setY(newY);
+                }
+
+                player.launchProjectile(Arrow.class, dir);
+            }
+        });
+    }
+
+    /**
+     * LOWEST 优先级：三叉戟投掷时，将忠诚附魔等级写入弹射物 PDC，
+     * 供命中时读取（HIGH 应用自定义伤害加成）。
+     * <p>
+     * 引雷：命中后记录待处理，供 LightningStrikeEvent 引用。
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void storeTridentEnchantsOnProjectile(ProjectileLaunchEvent event) {
+        if (!(event.getEntity() instanceof Trident trident)) return;
+        if (!(trident.getShooter() instanceof Player player)) return;
+
+        ItemStack weapon = player.getInventory().getItemInMainHand();
+        if (weapon == null || weapon.getType() != Material.TRIDENT) return;
+        if (!weapon.hasItemMeta()) return;
+
+        ItemMeta meta = weapon.getItemMeta();
+
+        /* 忠诚：写入 PDC */
+        int loyaltyLevel = meta.getEnchantLevel(Enchantment.LOYALTY);
+        boolean hasCustom = false;
+
+        if (loyaltyLevel > 0 && levelConfig.hasDamageEffect(Enchantment.LOYALTY.getKey().getKey())) {
+            trident.getPersistentDataContainer().set(
+                new NamespacedKey(plugin, PDC_TRIDENT_LOYALTY), PersistentDataType.INTEGER, loyaltyLevel);
+            hasCustom = true;
+        }
+
+        /* 引雷：不写入 PDC，命中时记录到 pendingChanneling */
+        int channelingLevel = meta.getEnchantLevel(Enchantment.CHANNELING);
+        if (channelingLevel > 0 && levelConfig.hasDamageEffect(Enchantment.CHANNELING.getKey().getKey())) {
+            pendingChanneling.put(player.getUniqueId(), channelingLevel);
+        }
+
+        if (hasCustom) {
+            trident.getPersistentDataContainer().set(
+                new NamespacedKey(plugin, PDC_TRIDENT_CUSTOM), PersistentDataType.BYTE, (byte)1);
+        }
+    }
+
+    /**
+     * LOWEST 优先级：弓/弩送出弹射物时，将附魔等级写入弹射物 PDC，
+     * 供命中时读取（LOWEST 剥离原版伤害、HIGH 应用自定义效果）。
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void storeBowEnchantsOnProjectile(ProjectileLaunchEvent event) {
+        if (!(event.getEntity().getShooter() instanceof Player player)) return;
+        if (!(event.getEntity() instanceof Projectile proj)) return;
+
+        ItemStack weapon = player.getInventory().getItemInMainHand();
+        if (weapon == null) return;
+        Material type = weapon.getType();
+        if (type != Material.BOW && type != Material.CROSSBOW) return;
+        if (!weapon.hasItemMeta()) return;
+
+        ItemMeta meta = weapon.getItemMeta();
+        boolean isBow = (type == Material.BOW);
+
+        /* 弓专有附魔 */
+        int powerLevel = isBow ? meta.getEnchantLevel(Enchantment.POWER) : 0;
+        int punchLevel = isBow ? meta.getEnchantLevel(Enchantment.PUNCH) : 0;
+        int flameLevel = isBow ? meta.getEnchantLevel(Enchantment.FLAME) : 0;
+        int infinityLevel = isBow ? meta.getEnchantLevel(Enchantment.INFINITY) : 0;
+
+        /* 弩专有附魔 */
+        int quickChargeLevel = meta.getEnchantLevel(Enchantment.QUICK_CHARGE);
+        int piercingLevel = meta.getEnchantLevel(Enchantment.PIERCING);
+
+        boolean hasCustom = false;
+        org.bukkit.persistence.PersistentDataContainer pdc = proj.getPersistentDataContainer();
+
+        if (powerLevel > 0 && levelConfig.hasDamageEffect(Enchantment.POWER.getKey().getKey())) {
+            pdc.set(new NamespacedKey(plugin, PDC_PROJ_POWER), PersistentDataType.INTEGER, powerLevel);
+            hasCustom = true;
+        }
+        if (punchLevel > 0 && levelConfig.hasKnockbackEffect(Enchantment.PUNCH.getKey().getKey())) {
+            pdc.set(new NamespacedKey(plugin, PDC_PROJ_PUNCH), PersistentDataType.INTEGER, punchLevel);
+            hasCustom = true;
+        }
+        if (flameLevel > 0 && levelConfig.hasFireEffect(Enchantment.FLAME.getKey().getKey())) {
+            pdc.set(new NamespacedKey(plugin, PDC_PROJ_FLAME), PersistentDataType.INTEGER, flameLevel);
+            hasCustom = true;
+        }
+        if (infinityLevel > 0 && levelConfig.hasDamageEffect(Enchantment.INFINITY.getKey().getKey())) {
+            pdc.set(new NamespacedKey(plugin, PDC_PROJ_INFINITY), PersistentDataType.INTEGER, infinityLevel);
+            hasCustom = true;
+        }
+        if (quickChargeLevel > 0 && levelConfig.hasDamageEffect(Enchantment.QUICK_CHARGE.getKey().getKey())) {
+            pdc.set(new NamespacedKey(plugin, PDC_PROJ_QUICK_CHARGE), PersistentDataType.INTEGER, quickChargeLevel);
+            hasCustom = true;
+        }
+        if (piercingLevel > 0 && levelConfig.hasDamageEffect(Enchantment.PIERCING.getKey().getKey())) {
+            pdc.set(new NamespacedKey(plugin, PDC_PROJ_PIERCING), PersistentDataType.INTEGER, piercingLevel);
+            hasCustom = true;
+        }
+
+        if (hasCustom) {
+            pdc.set(new NamespacedKey(plugin, PDC_PROJ_CUSTOM), PersistentDataType.BYTE, (byte)1);
+        }
+    }
 
     /**
      * LOWEST 优先级：剥离原版伤害加成/燃烧，取消原版横扫攻击事件
@@ -90,6 +343,12 @@ public class LevelEffectListener implements Listener {
         /* 取消原版横扫攻击事件（由本插件完全接管） */
         if (event.getCause() == DamageCause.ENTITY_SWEEP_ATTACK) {
             stripVanillaSweep(event);
+            return;
+        }
+
+        /* 弹射物：从 PDC 读取弓附魔等级，剥离原版力量伤害 */
+        if (event.getDamager() instanceof Projectile proj) {
+            stripVanillaBowDamage(event, proj);
             return;
         }
 
@@ -104,6 +363,23 @@ public class LevelEffectListener implements Listener {
 
         stripVanillaWeaponDamage(event, meta);
         stripVanillaFireAspect(meta, target);
+    }
+
+    /**
+     * 剥离原版弓的力量附魔伤害加成。
+     * 原版公式：damage = baseDamage × (1 + 0.25 × powerLevel)
+     * 剥离：damage / (1 + 0.25 × powerLevel)
+     */
+    private void stripVanillaBowDamage(EntityDamageByEntityEvent event, Projectile proj) {
+        org.bukkit.persistence.PersistentDataContainer pdc = proj.getPersistentDataContainer();
+        NamespacedKey customKey = new NamespacedKey(plugin, PDC_PROJ_CUSTOM);
+        if (!pdc.has(customKey, PersistentDataType.BYTE)) return;
+
+        NamespacedKey powerKey = new NamespacedKey(plugin, PDC_PROJ_POWER);
+        Integer powerLevel = pdc.get(powerKey, PersistentDataType.INTEGER);
+        if (powerLevel != null && powerLevel > 0) {
+            event.setDamage(event.getDamage() / (1.0 + 0.25 * powerLevel));
+        }
     }
 
     /**
@@ -155,6 +431,17 @@ public class LevelEffectListener implements Listener {
             if (level <= 0) continue;
 
             String key = enchant.getKey().getKey();
+
+            /* 致密：独立配置字段，不依赖 hasDamageEffect */
+            if (enchant == Enchantment.DENSITY) {
+                if (levelConfig.getDensityDamagePercentPerBlock(key) > 0) {
+                    if (event.getDamager() instanceof Player player) {
+                        vanillaBonus += level * player.getFallDistance();
+                    }
+                }
+                continue;
+            }
+
             if (!levelConfig.hasDamageEffect(key)) continue;
 
             if (enchant == Enchantment.SHARPNESS) {
@@ -190,6 +477,16 @@ public class LevelEffectListener implements Listener {
         /* 跳过横扫事件 */
         if (event.getCause() == DamageCause.ENTITY_SWEEP_ATTACK) return;
 
+        /* 弹射物：从 PDC 读取弓附魔等级，应用自定义效果 */
+        if (event.getDamager() instanceof Projectile proj) {
+            if (proj instanceof Trident) {
+                applyTridentEnchantEffects(event, (Trident) proj);
+                return;
+            }
+            applyBowEnchantEffects(event, proj);
+            return;
+        }
+
         if (!(event.getDamager() instanceof Player player)) return;
         if (!(event.getEntity() instanceof LivingEntity target)) return;
 
@@ -200,8 +497,15 @@ public class LevelEffectListener implements Listener {
         if (meta == null) return;
 
         applyWeaponDamageBonus(event, meta);
+        applyDensityDamage(event, meta, player);
+        applyRiptideDamage(event, player);
+        applyDepthStriderDamage(event, player);
+        applySoulSpeedDamage(event, player);
+        applySwiftSneakDamage(event, player);
         applyFireAspect(meta, target);
         applyKnockback(meta, player, target);
+        applyBreachPenetration(event, meta);
+        applyWindBurst(event, meta, player);
     }
 
     private void applyWeaponDamageBonus(EntityDamageByEntityEvent event, ItemMeta meta) {
@@ -228,6 +532,95 @@ public class LevelEffectListener implements Listener {
 
         double multiplier = 1.0 + (bestPercent * bestLevel / 100.0)
             + levelConfig.getDamagePercentBonus(bestKey) / 100.0;
+        event.setDamage(event.getDamage() * multiplier);
+    }
+
+    /**
+     * 深海探索者：玩家在水中时，根据靴子上的深海探索者等级增加伤害。
+     * 每级 +2%（默认），满级 X = +20%。
+     * <p>
+     * 独立于武器附魔加成，乘法叠加到当前伤害值上。
+     */
+    private void applyDepthStriderDamage(EntityDamageByEntityEvent event, Player player) {
+        if (player.getRemainingAir() >= player.getMaximumAir()) return; // 不在水中
+
+        ItemStack boots = player.getInventory().getBoots();
+        if (boots == null || !boots.hasItemMeta()) return;
+
+        ItemMeta meta = boots.getItemMeta();
+        if (meta.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, PDC_DEPTH_STRIDER_RPG_MANAGED),
+            PersistentDataType.BYTE)) return;
+
+        int level = meta.getEnchantLevel(Enchantment.DEPTH_STRIDER);
+        if (level <= 0) return;
+
+        String key = Enchantment.DEPTH_STRIDER.getKey().getKey();
+        if (!levelConfig.hasDamageEffect(key)) return;
+
+        double percent = levelConfig.getDamagePercentPerLevel(key);
+        double bonus = levelConfig.getDepthStriderDamageBonus(key);
+        double multiplier = 1.0 + (percent * level + bonus) / 100.0;
+        event.setDamage(event.getDamage() * multiplier);
+    }
+
+    /**
+     * 灵魂疾行：玩家站在魂沙/魂土上时，根据靴子上的灵魂疾行等级增加伤害。
+     * 每级 +2%（默认），满级 X = +20%。
+     * <p>
+     * 独立于武器附魔加成，乘法叠加到当前伤害值上。
+     */
+    private void applySoulSpeedDamage(EntityDamageByEntityEvent event, Player player) {
+        /* 检查脚下方块是否为魂沙/魂土 */
+        Material below = player.getLocation().subtract(0, 0.1, 0).getBlock().getType();
+        if (below != Material.SOUL_SAND && below != Material.SOUL_SOIL) return;
+
+        ItemStack boots = player.getInventory().getBoots();
+        if (boots == null || !boots.hasItemMeta()) return;
+
+        ItemMeta meta = boots.getItemMeta();
+        if (meta.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, PDC_SOUL_SPEED_RPG_MANAGED),
+            PersistentDataType.BYTE)) return;
+
+        int level = meta.getEnchantLevel(Enchantment.SOUL_SPEED);
+        if (level <= 0) return;
+
+        String key = Enchantment.SOUL_SPEED.getKey().getKey();
+        if (!levelConfig.hasDamageEffect(key)) return;
+
+        double percent = levelConfig.getDamagePercentPerLevel(key);
+        double bonus = levelConfig.getDamagePercentBonus(key);
+        double multiplier = 1.0 + (percent * level + bonus) / 100.0;
+        event.setDamage(event.getDamage() * multiplier);
+    }
+
+    /**
+     * 迅捷潜行：玩家潜行时，根据护腿上的迅捷潜行等级增加伤害。
+     * 每级 +2%（默认），满级 X = +20%。
+     * <p>
+     * 独立于武器附魔加成，乘法叠加到当前伤害值上。
+     */
+    private void applySwiftSneakDamage(EntityDamageByEntityEvent event, Player player) {
+        if (!player.isSneaking()) return;
+
+        ItemStack leggings = player.getInventory().getLeggings();
+        if (leggings == null || !leggings.hasItemMeta()) return;
+
+        ItemMeta meta = leggings.getItemMeta();
+        if (meta.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, PDC_SWIFT_SNEAK_RPG_MANAGED),
+            PersistentDataType.BYTE)) return;
+
+        int level = meta.getEnchantLevel(Enchantment.SWIFT_SNEAK);
+        if (level <= 0) return;
+
+        String key = Enchantment.SWIFT_SNEAK.getKey().getKey();
+        if (!levelConfig.hasDamageEffect(key)) return;
+
+        double percent = levelConfig.getDamagePercentPerLevel(key);
+        double bonus = levelConfig.getDamagePercentBonus(key);
+        double multiplier = 1.0 + (percent * level + bonus) / 100.0;
         event.setDamage(event.getDamage() * multiplier);
     }
 
@@ -272,6 +665,212 @@ public class LevelEffectListener implements Listener {
                 .add(direction.multiply(velocityStrength))
                 .setY(Math.min(target.getVelocity().getY() + 0.4, 0.4)));
         });
+    }
+
+    /**
+     * 从弹射物 PDC 读取弓附魔等级，应用自定义力量/冲击/火矢效果。
+     * <p>
+     * 力量：每级 +12% 伤害（默认），乘法叠加
+     * 冲击：每级 +1 格击退（默认），1 tick 延迟执行
+     * 火矢：每级 80 tick 燃烧（默认，与火焰附加相同）
+     */
+    private void applyBowEnchantEffects(EntityDamageByEntityEvent event, Projectile proj) {
+        org.bukkit.persistence.PersistentDataContainer pdc = proj.getPersistentDataContainer();
+        NamespacedKey customKey = new NamespacedKey(plugin, PDC_PROJ_CUSTOM);
+        if (!pdc.has(customKey, PersistentDataType.BYTE)) return;
+
+        Player shooter = (Player) proj.getShooter();
+        if (shooter == null) return;
+
+        /* 力量：伤害加成 */
+        NamespacedKey powerKey = new NamespacedKey(plugin, PDC_PROJ_POWER);
+        Integer powerLevel = pdc.get(powerKey, PersistentDataType.INTEGER);
+        if (powerLevel != null && powerLevel > 0) {
+            String key = Enchantment.POWER.getKey().getKey();
+            double percent = levelConfig.getDamagePercentPerLevel(key);
+            double bonus = levelConfig.getDamagePercentBonus(key);
+            double multiplier = 1.0 + (percent * powerLevel + bonus) / 100.0;
+            event.setDamage(event.getDamage() * multiplier);
+        }
+
+        LivingEntity target = (LivingEntity) event.getEntity();
+
+        /* 冲击：击退 */
+        NamespacedKey punchKey = new NamespacedKey(plugin, PDC_PROJ_PUNCH);
+        Integer punchLevel = pdc.get(punchKey, PersistentDataType.INTEGER);
+        if (punchLevel != null && punchLevel > 0) {
+            String key = Enchantment.PUNCH.getKey().getKey();
+            double blocksPerLevel = levelConfig.getKnockbackBlocksPerLevel(key);
+            double totalBlocks = blocksPerLevel * punchLevel
+                + levelConfig.getKnockbackBlocksBonus(key);
+
+            Vector direction = target.getLocation().toVector()
+                .subtract(shooter.getLocation().toVector())
+                .setY(0)
+                .normalize();
+            double velocityStrength = totalBlocks * 0.6;
+
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!target.isValid() || target.isDead()) return;
+                target.setVelocity(target.getVelocity()
+                    .add(direction.multiply(velocityStrength))
+                    .setY(Math.min(target.getVelocity().getY() + 0.4, 0.4)));
+            });
+        }
+
+        /* 火矢：燃烧 */
+        NamespacedKey flameKey = new NamespacedKey(plugin, PDC_PROJ_FLAME);
+        Integer flameLevel = pdc.get(flameKey, PersistentDataType.INTEGER);
+        if (flameLevel != null && flameLevel > 0) {
+            String key = Enchantment.FLAME.getKey().getKey();
+            int ticksPerLevel = levelConfig.getFireTicksPerLevel(key);
+            target.setFireTicks(ticksPerLevel * flameLevel
+                + levelConfig.getFireTicksBonus(key));
+        }
+
+        /* 无限：额外射弹伤害（保留原版无限箭矢效果） */
+        NamespacedKey infinityKey = new NamespacedKey(plugin, PDC_PROJ_INFINITY);
+        Integer infinityLevel = pdc.get(infinityKey, PersistentDataType.INTEGER);
+        if (infinityLevel != null && infinityLevel > 0) {
+            String key = Enchantment.INFINITY.getKey().getKey();
+            double percent = levelConfig.getDamagePercentPerLevel(key);
+            double bonus = levelConfig.getDamagePercentBonus(key);
+            double multiplier = 1.0 + (percent * infinityLevel + bonus) / 100.0;
+            event.setDamage(event.getDamage() * multiplier);
+        }
+
+        /* 快速填装：额外射弹伤害 */
+        NamespacedKey quickChargeKey = new NamespacedKey(plugin, PDC_PROJ_QUICK_CHARGE);
+        Integer qcLevel = pdc.get(quickChargeKey, PersistentDataType.INTEGER);
+        if (qcLevel != null && qcLevel > 0) {
+            String key = Enchantment.QUICK_CHARGE.getKey().getKey();
+            double percent = levelConfig.getDamagePercentPerLevel(key);
+            double bonus = levelConfig.getDamagePercentBonus(key);
+            double multiplier = 1.0 + (percent * qcLevel + bonus) / 100.0;
+            event.setDamage(event.getDamage() * multiplier);
+        }
+
+        /* 穿透：额外射弹伤害（保留原版穿透效果） */
+        NamespacedKey piercingKey = new NamespacedKey(plugin, PDC_PROJ_PIERCING);
+        Integer piercingLevel = pdc.get(piercingKey, PersistentDataType.INTEGER);
+        if (piercingLevel != null && piercingLevel > 0) {
+            String key = Enchantment.PIERCING.getKey().getKey();
+            double percent = levelConfig.getDamagePercentPerLevel(key);
+            double bonus = levelConfig.getDamagePercentBonus(key);
+            double multiplier = 1.0 + (percent * piercingLevel + bonus) / 100.0;
+            event.setDamage(event.getDamage() * multiplier);
+        }
+    }
+
+    /**
+     * 致密：根据坠落高度增加伤害。
+     * 每格 +10%（默认），可设最大倍率上限（默认 +200%=3x）。
+     */
+    private void applyDensityDamage(EntityDamageByEntityEvent event, ItemMeta meta, Player player) {
+        int level = meta.getEnchantLevel(Enchantment.DENSITY);
+        if (level <= 0) return;
+
+        String key = Enchantment.DENSITY.getKey().getKey();
+        double percentPerBlock = levelConfig.getDensityDamagePercentPerBlock(key)
+            + levelConfig.getDensityDamagePercentPerBlockBonus(key);
+        if (percentPerBlock <= 0) return;
+
+        double fallDistance = player.getFallDistance();
+        if (fallDistance < 1.5) return; // 至少 1.5 格才有加成
+
+        double maxMultiplier = levelConfig.getDensityMaxMultiplierPercent(key) / 100.0;
+        double multiplier = 1.0 + Math.min(percentPerBlock * fallDistance / 100.0, maxMultiplier);
+        event.setDamage(event.getDamage() * multiplier);
+    }
+
+    /**
+     * 破甲：降低目标护甲效果，模拟为伤害倍率。
+     * 每级 +15%（默认），在保护减免后、原版护甲前生效。
+     * <p>
+     * 注：此处按原方案在 HIGH 统一处理（先乘法），实际等效穿甲效果
+     * 在保护减免 → 原版护甲整条链中自动体现。
+     */
+    private void applyBreachPenetration(EntityDamageByEntityEvent event, ItemMeta meta) {
+        int level = meta.getEnchantLevel(Enchantment.BREACH);
+        if (level <= 0) return;
+
+        String key = Enchantment.BREACH.getKey().getKey();
+        double bypass = levelConfig.getBreachArmorBypassPercentPerLevel(key);
+        if (bypass <= 0) return;
+
+        double multiplier = 1.0 + (bypass * level) / 100.0;
+        event.setDamage(event.getDamage() * multiplier);
+    }
+
+    /**
+     * 风爆：攻击后弹飞玩家 + 缓降 buff。
+     * 每级 2 格弹起高度 + 每级 1s 缓降（默认）。
+     */
+    private void applyWindBurst(EntityDamageByEntityEvent event, ItemMeta meta, Player player) {
+        int level = meta.getEnchantLevel(Enchantment.WIND_BURST);
+        if (level <= 0) return;
+
+        String key = Enchantment.WIND_BURST.getKey().getKey();
+        double height = levelConfig.getWindBurstHeightPerLevel(key);
+        if (height <= 0) return;
+
+        double totalHeight = height * level;
+        double slowFallTicks = levelConfig.getWindBurstSlowFallTicksPerLevel(key) * level;
+
+        /* 弹飞：Y 轴速度（约 height * 0.5 换算 m/s → tick velocity） */
+        player.setVelocity(new org.bukkit.util.Vector(0, totalHeight * 0.35, 0));
+
+        /* 缓降：防止摔伤 */
+        if (slowFallTicks > 0) {
+            player.addPotionEffect(
+                new PotionEffect(
+                    PotionEffectType.SLOW_FALLING,
+                    (int) slowFallTicks, 0, true, false));
+        }
+    }
+
+    /**
+     * 从三叉戟 PDC 读取忠诚附魔等级，应用自定义投掷伤害加成。
+     * 每级 +2%（默认），乘法叠加到当前伤害值上。
+     */
+    private void applyTridentEnchantEffects(EntityDamageByEntityEvent event, Trident trident) {
+        org.bukkit.persistence.PersistentDataContainer pdc = trident.getPersistentDataContainer();
+        NamespacedKey customKey = new NamespacedKey(plugin, PDC_TRIDENT_CUSTOM);
+        if (!pdc.has(customKey, PersistentDataType.BYTE)) return;
+
+        /* 忠诚：投掷命中伤害加成 */
+        NamespacedKey loyaltyKey = new NamespacedKey(plugin, PDC_TRIDENT_LOYALTY);
+        Integer loyaltyLevel = pdc.get(loyaltyKey, PersistentDataType.INTEGER);
+        if (loyaltyLevel != null && loyaltyLevel > 0) {
+            String key = Enchantment.LOYALTY.getKey().getKey();
+            double percent = levelConfig.getDamagePercentPerLevel(key);
+            double bonus = levelConfig.getDamagePercentBonus(key);
+            double multiplier = 1.0 + (percent * loyaltyLevel + bonus) / 100.0;
+            event.setDamage(event.getDamage() * multiplier);
+        }
+    }
+
+    /**
+     * 激流：玩家手持激流三叉戟，在水中/雨中近战攻击时增加伤害。
+     * 每级 +3%（默认），乘法叠加。
+     */
+    private void applyRiptideDamage(EntityDamageByEntityEvent event, Player player) {
+        ItemStack weapon = player.getInventory().getItemInMainHand();
+        if (weapon == null || weapon.getType() != Material.TRIDENT) return;
+
+        int level = weapon.getItemMeta().getEnchantLevel(Enchantment.RIPTIDE);
+        if (level <= 0) return;
+
+        String key = Enchantment.RIPTIDE.getKey().getKey();
+        if (!levelConfig.hasDamageEffect(key)) return;
+
+        /* 水/雨中才有增益 */
+        if (!player.isInWaterOrRain()) return;
+
+        double percent = levelConfig.getDamagePercentPerLevel(key);
+        double bonus = levelConfig.getDamagePercentBonus(key);
+        double multiplier = 1.0 + (percent * level + bonus) / 100.0;
+        event.setDamage(event.getDamage() * multiplier);
     }
 
     /* ==================== 第二步B：保护附魔减免 ==================== */
@@ -730,6 +1329,151 @@ public class LevelEffectListener implements Listener {
         respirationFractionalRefund.put(player.getUniqueId(), fractionalDrain - actualDrain);
 
         event.setAmount(Math.max(0, currentAir - actualDrain));
+    }
+
+    /* ==================== 第二步H：冰霜行者 ==================== */
+
+    /**
+     * LOWEST 优先级：取消原版冰霜行者事件，改用手动生成冰块。
+     * <p>
+     * 半径 = 基础半径 + 等级 × 每级半径 + bonus，曼哈顿距离
+     * 滞留时间 = 基础秒数 + 等级 × 每级秒数 + bonus
+     * <p>
+     * 使用 100ms 节流防止同一 tick 内多次触发。
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void applyFrostWalker(EntityBlockFormEvent event) {
+        if (event.getNewState().getType() != Material.FROSTED_ICE) return;
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        String key = Enchantment.FROST_WALKER.getKey().getKey();
+        if (!levelConfig.hasFrostWalkerEffect(key)) return;
+
+        ItemStack boots = player.getInventory().getBoots();
+        if (boots == null || !boots.hasItemMeta()) return;
+
+        ItemMeta meta = boots.getItemMeta();
+        if (meta.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, PDC_FROST_WALKER_RPG_MANAGED),
+            PersistentDataType.BYTE)) return;
+
+        int level = meta.getEnchantLevel(Enchantment.FROST_WALKER);
+        if (level <= 0) return;
+
+        /* 只有确定自定义接管时才取消原版事件 */
+        event.setCancelled(true);
+
+        /* 节流：同一玩家 100ms 内只处理一次 */
+        UUID uid = player.getUniqueId();
+        long now = System.currentTimeMillis();
+        Long last = frostWalkerCooldowns.get(uid);
+        if (last != null && now - last < 100) return;
+        frostWalkerCooldowns.put(uid, now);
+
+        double baseRadius = levelConfig.getFrostWalkerBaseRadius(key);
+        double radiusPerLevel = levelConfig.getFrostWalkerRadiusPerLevel(key);
+        double bonus = levelConfig.getFrostWalkerRadiusBonus(key);
+        int radius = (int) Math.ceil(baseRadius + level * radiusPerLevel + bonus);
+        if (radius <= 0) return;
+
+        /* 计算滞留 tick 数（秒 × 20） */
+        double meltBaseSeconds = levelConfig.getFrostWalkerMeltBaseSeconds(key);
+        double meltSecondsPerLevel = levelConfig.getFrostWalkerMeltSecondsPerLevel(key);
+        double meltBonus = levelConfig.getFrostWalkerMeltBonus(key);
+        double meltSeconds = Math.max(1.0, meltBaseSeconds + level * meltSecondsPerLevel + meltBonus);
+        long meltTicks = Math.round(meltSeconds * 20);
+
+        /* 以玩家脚下为中心，曼哈顿距离内放置 frosted_ice */
+        Location center = player.getLocation().getBlock().getLocation().subtract(0, 1, 0);
+
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                if (Math.abs(dx) + Math.abs(dz) > radius) continue;
+
+                Block block = center.clone().add(dx, 0, dz).getBlock();
+                if (block.getType() != Material.WATER) continue;
+
+                block.setType(Material.FROSTED_ICE, false);
+
+                /* 定时融化：meltTicks 后恢复为水 */
+                Block meltBlock = block;
+                plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                    if (meltBlock.getType() == Material.FROSTED_ICE) {
+                        meltBlock.setType(Material.WATER, false);
+                    }
+                }, meltTicks);
+            }
+        }
+    }
+
+    /* ==================== 第二步I：钓鱼附魔（海之眷顾 / 饵钓） ==================== */
+
+    /**
+     * LOWEST 优先级：玩家钓到物品时，应用海之眷顾 + 饵钓自定义效果。
+     * <p>
+     * 海之眷顾：级联概率系统（与时运相同），命中后复制渔获 × 命中等级
+     * 饵钓：每级 +% 概率额外一钩（复制当前渔获一份）
+     * <p>
+     * 防刷物品：
+     * - 仅处理 ticksLived ≤ 1 的物品（真正的渔获）
+     *   → 钩子拉回地面物品时 ticksLived 远大于 1，直接跳过
+     * - PDC 标记已处理的物品实体，防止事件多次触发
+     */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onFishingCatch(PlayerFishEvent event) {
+        if (event.getState() != PlayerFishEvent.State.CAUGHT_FISH) return;
+        if (!(event.getCaught() instanceof Item caught)) return;
+
+        /* 防刷：只处理刚生成的渔获，拒绝钩子拉回的地面物品 */
+        if (caught.getTicksLived() > 1) return;
+
+        /* 防刷：PDC 标记防止同一物品实体被重复处理 */
+        NamespacedKey processedKey = new NamespacedKey(plugin, "fish_processed");
+        org.bukkit.persistence.PersistentDataContainer pdc = caught.getPersistentDataContainer();
+        if (pdc.has(processedKey, PersistentDataType.BYTE)) return;
+        pdc.set(processedKey, PersistentDataType.BYTE, (byte) 1);
+
+        Player player = event.getPlayer();
+        ItemStack rod = player.getInventory().getItemInMainHand();
+        if (rod == null || !rod.hasItemMeta()) return;
+
+        /* 副手也检查（可能鱼竿在副手） */
+        if (rod.getType() != Material.FISHING_ROD) {
+            rod = player.getInventory().getItemInOffHand();
+            if (rod == null || !rod.hasItemMeta() || rod.getType() != Material.FISHING_ROD) return;
+        }
+
+        ItemMeta meta = rod.getItemMeta();
+        ItemStack caughtStack = caught.getItemStack();
+        Location loc = player.getLocation();
+
+        /* 海之眷顾：级联概率 → 复制渔获 */
+        int lotsLevel = meta.getEnchantLevel(Enchantment.LUCK_OF_THE_SEA);
+        if (lotsLevel > 0) {
+            String key = Enchantment.LUCK_OF_THE_SEA.getKey().getKey();
+            if (levelConfig.hasFortuneEffect(key)) {
+                int effectiveLevel = getEffectiveFortuneLevel(meta, Enchantment.LUCK_OF_THE_SEA);
+                if (effectiveLevel > 1) {
+                    for (int i = 1; i < effectiveLevel; i++) {
+                        loc.getWorld().dropItemNaturally(loc, caughtStack.clone());
+                    }
+                }
+            }
+        }
+
+        /* 饵钓：每级 % 概率额外一钩 */
+        int lureLevel = meta.getEnchantLevel(Enchantment.LURE);
+        if (lureLevel > 0) {
+            String key = Enchantment.LURE.getKey().getKey();
+            if (levelConfig.hasLureEffect(key)) {
+                double chance = levelConfig.getLureChancePerLevel(key);
+                double bonus = levelConfig.getLureChanceBonus(key);
+                double probability = (chance * lureLevel + bonus) / 100.0;
+                if (ThreadLocalRandom.current().nextDouble() < probability) {
+                    loc.getWorld().dropItemNaturally(loc, caughtStack.clone());
+                }
+            }
+        }
     }
 
     /* ==================== 第三步：横扫之刃范围伤害 ==================== */
@@ -1297,6 +2041,35 @@ public class LevelEffectListener implements Listener {
      * 物品 PDC 中设置此键 → 水下速掘链挖掘限制跳过该头盔，RPG 接管
      */
     private static final String PDC_AQUA_AFFINITY_RPG_MANAGED = "aqua_affinity_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 深海探索者水下伤害跳过该靴子，RPG 接管
+     */
+    private static final String PDC_DEPTH_STRIDER_RPG_MANAGED = "depth_strider_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 灵魂疾行跳过该靴子，RPG 接管
+     */
+    private static final String PDC_SOUL_SPEED_RPG_MANAGED = "soul_speed_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 迅捷潜行跳过该护腿，RPG 接管
+     */
+    private static final String PDC_SWIFT_SNEAK_RPG_MANAGED = "swift_sneak_rpg_managed";
+    /**
+     * 物品 PDC 中设置此键 → 冰霜行者跳过该靴子，RPG 接管
+     */
+    private static final String PDC_FROST_WALKER_RPG_MANAGED = "frost_walker_rpg_managed";
+
+    /* 弹射物 PDC：存储弓附魔等级，供命中时读取（LOWEST / HIGH） */
+    private static final String PDC_PROJ_POWER = "bow_power";
+    private static final String PDC_PROJ_PUNCH = "bow_punch";
+    private static final String PDC_PROJ_FLAME = "bow_flame";
+    private static final String PDC_PROJ_INFINITY = "bow_infinity";
+    private static final String PDC_PROJ_QUICK_CHARGE = "quick_charge";
+    private static final String PDC_PROJ_PIERCING = "piercing";
+    private static final String PDC_PROJ_CUSTOM = "bow_custom"; // 标记此弹射物已被自定义接管
+
+    /* 三叉戟 PDC */
+    private static final String PDC_TRIDENT_LOYALTY = "trident_loyalty";
+    private static final String PDC_TRIDENT_CUSTOM = "trident_custom";
 
     /**
      * LOWEST 优先级：耐久附魔效果

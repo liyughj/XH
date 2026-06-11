@@ -115,7 +115,7 @@ public final class XH extends JavaPlugin {
             );
 
             /* 注册附魔经验显示（含ProtocolLib数据包监听器） */
-            this.enchantmentLevelDisplay = new EnchantmentLevelDisplay(this, levelManager);
+            this.enchantmentLevelDisplay = new EnchantmentLevelDisplay(this, levelManager, this.levelConfig);
             getServer().getPluginManager().registerEvents(enchantmentLevelDisplay, this);
 
             getLogger().info("附魔升级系统已启用");

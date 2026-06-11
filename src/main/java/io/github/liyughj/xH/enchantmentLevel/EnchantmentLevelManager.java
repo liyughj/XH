@@ -384,7 +384,7 @@ public class EnchantmentLevelManager {
      * @param enchant 附魔
      * @return 排序序号
      */
-    private int getEnchantmentOrder(Enchantment enchant) {
+    public int getEnchantmentOrder(Enchantment enchant) {
         /* 按照原版附魔注册顺序定义排序权重 */
         String key = enchant.getKey().getKey().toLowerCase();
         return switch (key) {
