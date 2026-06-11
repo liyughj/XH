@@ -32,9 +32,17 @@ public class AttributeStorage {
     private static JavaPlugin plugin;
     private static final Map<String, NamespacedKey> keyCache = new HashMap<>();
 
+    /** 枪械配置模板（PDC 无值时回退读取） */
+    private static Object gunItemConfig; // GunItemConfig 在 gun 包中，用 Object 避免循环依赖
+
     /** 插件启用时由外部调用一次 */
     public static void init(JavaPlugin javaPlugin) {
         plugin = javaPlugin;
+    }
+
+    /** 设置枪械配置模板，供 getItemAttrRange 回退 */
+    public static void setGunItemConfig(Object config) {
+        gunItemConfig = config;
     }
 
     /** 获取或缓存 NamespacedKey */
@@ -108,11 +116,53 @@ public class AttributeStorage {
     public static AttributeRange getItemAttrRange(ItemStack item, RpgAttribute attr) {
         if (item == null || !item.hasItemMeta()) return new AttributeRange(attr.getDefaultValue(), attr.getDefaultValue());
         PersistentDataContainer pdc = item.getItemMeta().getPersistentDataContainer();
-        return AttributeRange.fromPdc(pdc,
+        AttributeRange pdcRange = AttributeRange.fromPdc(pdc,
             key(PDC_PREFIX_ITEM + attr.getKey()),
             key(PDC_PREFIX_ITEM + attr.getKey() + "_min"),
             key(PDC_PREFIX_ITEM + attr.getKey() + "_max"),
             attr);
+
+        /* PDC 有真实值则直接返回（最高优先级） */
+        if (pdcRange.getMin() != attr.getDefaultValue() || pdcRange.getMax() != attr.getDefaultValue()) {
+            return pdcRange;
+        }
+
+        /* ——— 以下仅对 GUN 分类属性走扩展链 ——— */
+        if (attr.getCategory() != RpgAttribute.Category.GUN) {
+            return pdcRange;
+        }
+
+        /* Step 1: 取 gun.yml 模板值 */
+        AttributeRange current = null;
+        if (gunItemConfig != null) {
+            try {
+                java.lang.reflect.Method m = gunItemConfig.getClass()
+                    .getMethod("getAttrRange", org.bukkit.Material.class, RpgAttribute.class);
+                Object result = m.invoke(gunItemConfig, item.getType(), attr);
+                if (result != null) current = (AttributeRange) result;
+            } catch (Exception ignored) {}
+        }
+        if (current == null) {
+            current = new AttributeRange(attr.getDefaultValue(), attr.getDefaultValue());
+        }
+
+        /* Step 2: 链式调用 GunAttributeProvider（配件/符文/附魔） */
+        for (io.github.liyughj.xH.gun.GunAttributeProvider provider :
+             io.github.liyughj.xH.gun.GunAttributeProvider.getAll()) {
+            AttributeRange modified = provider.modifyRange(item, attr, current);
+            if (modified != null) current = modified;
+        }
+
+        return current;
+    }
+
+    /**
+     * 获取物品属性的 roll 值（含 gun.yml 回退和 Provider 链）。
+     * 便捷方法，等效于 getItemAttrRange(item, attr).roll()。
+     */
+    public static double getAttrValue(ItemStack item, RpgAttribute attr) {
+        AttributeRange range = getItemAttrRange(item, attr);
+        return range != null ? range.roll() : attr.getDefaultValue();
     }
 
     /**

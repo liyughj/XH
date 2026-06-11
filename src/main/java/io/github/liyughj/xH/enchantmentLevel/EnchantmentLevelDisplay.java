@@ -122,75 +122,62 @@ public class EnchantmentLevelDisplay implements Listener {
     }
 
     /**
-     * 修改物品Lore（注入附魔经验进度）
-     *
-     * @param item     原始物品
-     * @param maxColor 玩家当前 [MAX] 颜色，可为 null
-     * @return 修改后的物品（克隆），如果不需要修改则返回null
+     * 修改物品Lore（注入附魔经验进度 + 效果汇总）。
+     * <p>
+     * 统一过滤 + 重建策略：
+     *  extractCleanLore() 用 isInjectedLine() 剥离所有已注入行，
+     *  再追加最新 XP 行 + 效果汇总行，杜绝叠层残留。
      */
     private ItemStack modifyItemLore(ItemStack item, TextColor maxColor) {
-        if (item == null || item.getType().isAir() || !item.hasItemMeta()) {
-            return null;
-        }
+        if (item == null || item.getType().isAir() || !item.hasItemMeta()) return null;
 
-        /* 检查物品是否有需要显示的附魔 */
         Set<Enchantment> enchants = EnchantmentLevelData.getAllEnchantments(item);
-        if (enchants.isEmpty()) {
-            return null;
-        }
+        if (enchants.isEmpty()) return null;
+        if (!manager.hasExpData(item)) return null;
 
-        /* 检查是否存在经验数据 */
-        if (!manager.hasExpData(item)) {
-            return null;
-        }
-
-        /* 克隆物品避免修改原始物品 */
         ItemStack cloned = item.clone();
         ItemMeta meta = cloned.getItemMeta();
-        List<Component> originalLore = meta.lore();
 
-        /* 获取附魔经验Lore */
+        List<Component> cleanLore = extractCleanLore(meta);
+
         List<Component> expLore = manager.getDisplayLoreComponents(item, maxColor);
-        if (expLore.isEmpty()) {
-            return null;
-        }
+        if (expLore.isEmpty()) return null;
 
-        /* 过滤掉已存在的经验进度行，避免重复 */
-        List<Component> filteredOriginalLore = new ArrayList<>();
-        if (originalLore != null) {
-            for (Component line : originalLore) {
-                if (!isExpLoreLine(line)) {
-                    filteredOriginalLore.add(line);
-                }
-            }
-        }
-
-        /* 构建新Lore：附魔经验行在前，原始Lore在中，效果汇总在最后 */
         List<Component> newLore = new ArrayList<>(expLore);
-        newLore.addAll(filteredOriginalLore);
+        newLore.addAll(cleanLore);
         newLore.addAll(getEffectSummaryLines(item));
 
         meta.lore(newLore);
-
-        /* 隐藏原版附魔显示 */
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-
         cloned.setItemMeta(meta);
         return cloned;
     }
 
     /**
-     * 判断是否为经验进度Lore行
-     * 通过强特征（经验条方块字符或 [MAX] 标记）来识别，避免误判普通描述中的 "x/y" 文本
-     *
-     * @param line Lore行
-     * @return 是否为经验进度行
+     * 从 ItemMeta 中提取干净 Lore（去掉经验进度行 + 效果汇总行）。
      */
-    private boolean isExpLoreLine(Component line) {
+    private List<Component> extractCleanLore(ItemMeta meta) {
+        List<Component> lore = meta.lore();
+        if (lore == null) return new ArrayList<>();
+        List<Component> clean = new ArrayList<>();
+        for (Component line : lore) {
+            if (!isInjectedLine(line)) {
+                clean.add(line);
+            }
+        }
+        return clean;
+    }
+
+    /**
+     * 判断该行是否由本系统注入（经验条 / 效果汇总 / 分隔线）。
+     * 检查三大特征：
+     *   █ ░ [MAX]  → 经验进度条
+     *   →           → 效果汇总行（含标题，标题包含 →）
+     */
+    private boolean isInjectedLine(Component line) {
         if (line == null) return false;
         String text = line.toString();
-        /* 经验条方块字符 [MAX] 标记是经验Lore的强特征 */
-        return text.contains("█") || text.contains("░") || text.contains("[MAX]");
+        return text.contains("→") || text.contains("█") || text.contains("░") || text.contains("[MAX]");
     }
 
     /**
@@ -200,15 +187,14 @@ public class EnchantmentLevelDisplay implements Listener {
      * @param on     是否开启
      */
     public void setXpMode(Player player, boolean on) {
+        UUID uuid = player.getUniqueId();
         if (on) {
-            xpModePlayers.add(player.getUniqueId());
-            /* 每次开启 XP 模式时，随机生成一个 [MAX] 文字颜色，整局固定不变 */
-            playerMaxColors.put(player.getUniqueId(), EnchantmentLevelManager.getRandomMaxColor());
+            xpModePlayers.add(uuid);
+            playerMaxColors.put(uuid, EnchantmentLevelManager.getRandomMaxColor());
         } else {
-            xpModePlayers.remove(player.getUniqueId());
-            playerMaxColors.remove(player.getUniqueId());
+            xpModePlayers.remove(uuid);
+            playerMaxColors.remove(uuid);
         }
-        /* 延迟一 tick 刷新，确保模式切换完成后再发包 */
         Bukkit.getScheduler().runTaskLater(plugin, () -> refreshInventory(player), 1L);
     }
 
@@ -272,38 +258,17 @@ public class EnchantmentLevelDisplay implements Listener {
     }
 
     /**
-     * 获取干净的物品（移除经验Lore和HIDE_ENCHANTS）
-     *
-     * @param item 原始物品
-     * @return 干净的物品
+     * 获取干净的物品（移除所有注入行和 HIDE_ENCHANTS）
      */
     private ItemStack getCleanItem(ItemStack item) {
-        if (item == null || !item.hasItemMeta()) {
-            return item;
-        }
+        if (item == null || !item.hasItemMeta()) return item;
 
         ItemStack clean = item.clone();
         ItemMeta meta = clean.getItemMeta();
-
-        /* 移除 HIDE_ENCHANTS，让原版附魔显示 */
         meta.removeItemFlags(ItemFlag.HIDE_ENCHANTS);
 
-        /* 获取原始Lore（不含经验进度） */
-        List<Component> originalLore = meta.lore();
-        if (originalLore != null) {
-            /* 过滤掉经验进度行 */
-            List<Component> filteredLore = new ArrayList<>();
-            for (Component line : originalLore) {
-                if (!isExpLoreLine(line)) {
-                    filteredLore.add(line);
-                }
-            }
-            if (filteredLore.isEmpty()) {
-                meta.lore(null);
-            } else {
-                meta.lore(filteredLore);
-            }
-        }
+        List<Component> cleanLore = extractCleanLore(meta);
+        meta.lore(cleanLore.isEmpty() ? null : cleanLore);
 
         clean.setItemMeta(meta);
         return clean;
@@ -315,9 +280,7 @@ public class EnchantmentLevelDisplay implements Listener {
     private static final TextColor SUMMARY_LABEL_COLOR = TextColor.color(0x888888);
     private static final TextColor SUMMARY_VALUE_COLOR = TextColor.color(0x55FF55);
     private static final Component SUMMARY_HEADER = Component.text()
-        .append(Component.text("---------- ", SUMMARY_HEADER_COLOR))
-        .append(Component.text("附魔效果", TextColor.color(0xFFAA00)))
-        .append(Component.text(" ----------", SUMMARY_HEADER_COLOR))
+        .append(Component.text("── 附魔效果 → ──", SUMMARY_HEADER_COLOR))
         .decoration(TextDecoration.ITALIC, false)
         .build();
 

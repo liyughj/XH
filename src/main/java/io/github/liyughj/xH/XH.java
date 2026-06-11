@@ -135,6 +135,34 @@ public final class XH extends JavaPlugin {
             getLogger().info("附魔升级系统已禁用（配置中 enabled=false）");
         }
 
+        /* 初始化枪械配置（gun.yml） */
+        io.github.liyughj.xH.gun.GunItemConfig gunItemConfig = new io.github.liyughj.xH.gun.GunItemConfig(this);
+        AttributeStorage.setGunItemConfig(gunItemConfig);
+
+        /* 初始化弹药配置（ammo.yml） */
+        io.github.liyughj.xH.gun.AmmoConfig ammoConfig = new io.github.liyughj.xH.gun.AmmoConfig(this);
+
+        /* 初始化全局系统配置 */
+        io.github.liyughj.xH.gun.GunSystemConfig.init(gunItemConfig, ammoConfig);
+
+        /* 初始化特殊武器 */
+        io.github.liyughj.xH.gun.SpecialWeapons.init(this);
+
+        /* 初始化弹夹系统 */
+        io.github.liyughj.xH.gun.MagazineManager.init(this);
+
+        /* 初始化弹道系统 */
+        io.github.liyughj.xH.gun.BallisticsManager.init(this);
+
+        /* 初始化铁砧修复 */
+        io.github.liyughj.xH.anvil.AnvilRepairManager.init(this);
+
+        /* 注册枪械监听器 */
+        getServer().getPluginManager().registerEvents(new io.github.liyughj.xH.gun.GunListener(this), this);
+
+        /* 启动枪械定时任务（每秒恢复扩散） */
+        io.github.liyughj.xH.gun.GunTickTask.start(this);
+
         /* 注册命令执行器 */
         getCommand("xh").setExecutor(new XHCommand(this));
 

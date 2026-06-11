@@ -264,6 +264,50 @@ public class EnchantmentLevelConfig {
         /* 通用 */
         dc.set(KEY_ENABLED, DEFAULT_ENABLED);
 
+        /* 满级配置（按类别分组，方便查阅；删除或注释可恢复原版上限） */
+        dc.set(KEY_MAX_LEVELS + ".sharpness", 5);
+        dc.set(KEY_MAX_LEVELS + ".smite", 5);
+        dc.set(KEY_MAX_LEVELS + ".bane_of_arthropods", 5);
+        dc.set(KEY_MAX_LEVELS + ".sweeping_edge", 3);
+        dc.set(KEY_MAX_LEVELS + ".fire_aspect", 2);
+        dc.set(KEY_MAX_LEVELS + ".knockback", 2);
+        dc.set(KEY_MAX_LEVELS + ".looting", 3);
+        dc.set(KEY_MAX_LEVELS + ".efficiency", 5);
+        dc.set(KEY_MAX_LEVELS + ".silk_touch", 1);
+        dc.set(KEY_MAX_LEVELS + ".fortune", 3);
+        dc.set(KEY_MAX_LEVELS + ".unbreaking", 3);
+        dc.set(KEY_MAX_LEVELS + ".mending", 1);
+        dc.set(KEY_MAX_LEVELS + ".protection", 4);
+        dc.set(KEY_MAX_LEVELS + ".fire_protection", 4);
+        dc.set(KEY_MAX_LEVELS + ".blast_protection", 4);
+        dc.set(KEY_MAX_LEVELS + ".projectile_protection", 4);
+        dc.set(KEY_MAX_LEVELS + ".feather_falling", 4);
+        dc.set(KEY_MAX_LEVELS + ".thorns", 3);
+        dc.set(KEY_MAX_LEVELS + ".respiration", 3);
+        dc.set(KEY_MAX_LEVELS + ".aqua_affinity", 1);
+        dc.set(KEY_MAX_LEVELS + ".depth_strider", 3);
+        dc.set(KEY_MAX_LEVELS + ".frost_walker", 2);
+        dc.set(KEY_MAX_LEVELS + ".soul_speed", 3);
+        dc.set(KEY_MAX_LEVELS + ".swift_sneak", 3);
+        dc.set(KEY_MAX_LEVELS + ".power", 5);
+        dc.set(KEY_MAX_LEVELS + ".punch", 2);
+        dc.set(KEY_MAX_LEVELS + ".flame", 1);
+        dc.set(KEY_MAX_LEVELS + ".infinity", 1);
+        dc.set(KEY_MAX_LEVELS + ".multishot", 1);
+        dc.set(KEY_MAX_LEVELS + ".quick_charge", 3);
+        dc.set(KEY_MAX_LEVELS + ".piercing", 4);
+        dc.set(KEY_MAX_LEVELS + ".channeling", 1);
+        dc.set(KEY_MAX_LEVELS + ".impaling", 5);
+        dc.set(KEY_MAX_LEVELS + ".loyalty", 3);
+        dc.set(KEY_MAX_LEVELS + ".riptide", 3);
+        dc.set(KEY_MAX_LEVELS + ".luck_of_the_sea", 3);
+        dc.set(KEY_MAX_LEVELS + ".lure", 3);
+        dc.set(KEY_MAX_LEVELS + ".density", 5);
+        dc.set(KEY_MAX_LEVELS + ".breach", 4);
+        dc.set(KEY_MAX_LEVELS + ".wind_burst", 3);
+        dc.set(KEY_MAX_LEVELS + ".binding_curse", 1);
+        dc.set(KEY_MAX_LEVELS + ".vanishing_curse", 1);
+
         /* 升级公式 */
         dc.set(KEY_LEVEL_FORMULA + "." + KEY_FORMULA, DEFAULT_FORMULA);
         dc.set(KEY_LEVEL_FORMULA + "." + KEY_BASE_EXP, DEFAULT_BASE_EXP);
@@ -325,13 +369,24 @@ public class EnchantmentLevelConfig {
             "  用剑战斗→剑上的附魔成长；用镐挖矿→镐上的附魔成长。",
             "  每个附魔有固定的\"成长类别\"，只有对应用法才加经验。",
             "",
-            "  附魔类别:",
-            "    WEAPON:   锋利/亡灵杀手/节肢杀手/横扫之刃/火焰附加/击退/抢夺",
-            "    TOOL:     效率/精准采集/时运",
-            "    ARMOR:    保护/火焰保护/爆炸保护/弹射物保护/摔落保护/水下呼吸等",
-            "    BOW:      力量/冲击/火矢/无限/穿透/快速装填/多重射击",
-            "    TRIDENT:  穿刺/忠诚/激流/引雷",
-            "    UNIVERSAL: 耐久/经验修补",
+            "=== 附魔类别（共42个，含1.21+锤类） ===",
+            "  WEAPON:   锋利/亡灵杀手/节肢杀手/横扫之刃/火焰附加/击退/抢夺",
+            "  TOOL:     效率/精准采集/时运",
+            "  ARMOR:    保护/火焰保护/爆炸保护/弹射物保护/摔落保护",
+            "            荆棘/水下呼吸/水下速掘",
+            "            深海探索者/冰霜行者/灵魂疾行/迅捷潜行",
+            "  BOW:      力量/冲击/火矢/无限",
+            "  CROSSBOW: 多重射击/快速装填/穿透",
+            "  TRIDENT:  穿刺/忠诚/激流/引雷",
+            "  FISHING:  海之眷顾/饵钓",
+            "  MACE:     致密/破甲/风爆",
+            "  UNIVERSAL: 耐久/经验修补",
+            "  CURSE:    绑定诅咒/消失诅咒",
+            "",
+            "=== 最高等级 ===",
+            "  max-levels 下每个附魔的默认值=原版上限（如 sharpness: 5）",
+            "  修改数值可突破原版上限（最高 10），删除或注释则回退原版",
+            "  自定义附魔效果见 Level.yml",
             "",
             "  稀有度系统:",
             "    挖掘更稀有的方块→更多经验（钻石矿 > 铁矿 > 石头）",

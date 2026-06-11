@@ -33,6 +33,7 @@ import org.bukkit.event.player.PlayerExpChangeEvent;
 import org.bukkit.event.player.PlayerItemDamageEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
@@ -158,6 +159,12 @@ public class LevelEffectListener implements Listener {
         this.levelConfig = levelConfig;
     }
 
+    /** 缓存 NamespacedKey，避免每次事件新建 44+ 个对象 */
+    private final java.util.Map<String, NamespacedKey> nsKeyCache = new HashMap<>();
+    private NamespacedKey nsKey(String key) {
+        return nsKeyCache.computeIfAbsent(key, k -> new NamespacedKey(plugin, k));
+    }
+
     /* ==================== 第一步：剥离原版附魔效果 ==================== */
 
     /**
@@ -258,7 +265,7 @@ public class LevelEffectListener implements Listener {
 
         if (loyaltyLevel > 0 && levelConfig.hasDamageEffect(Enchantment.LOYALTY.getKey().getKey())) {
             trident.getPersistentDataContainer().set(
-                new NamespacedKey(plugin, PDC_TRIDENT_LOYALTY), PersistentDataType.INTEGER, loyaltyLevel);
+                nsKey(PDC_TRIDENT_LOYALTY), PersistentDataType.INTEGER, loyaltyLevel);
             hasCustom = true;
         }
 
@@ -270,7 +277,7 @@ public class LevelEffectListener implements Listener {
 
         if (hasCustom) {
             trident.getPersistentDataContainer().set(
-                new NamespacedKey(plugin, PDC_TRIDENT_CUSTOM), PersistentDataType.BYTE, (byte)1);
+                nsKey(PDC_TRIDENT_CUSTOM), PersistentDataType.BYTE, (byte)1);
         }
     }
 
@@ -303,35 +310,35 @@ public class LevelEffectListener implements Listener {
         int piercingLevel = meta.getEnchantLevel(Enchantment.PIERCING);
 
         boolean hasCustom = false;
-        org.bukkit.persistence.PersistentDataContainer pdc = proj.getPersistentDataContainer();
+        PersistentDataContainer pdc = proj.getPersistentDataContainer();
 
         if (powerLevel > 0 && levelConfig.hasDamageEffect(Enchantment.POWER.getKey().getKey())) {
-            pdc.set(new NamespacedKey(plugin, PDC_PROJ_POWER), PersistentDataType.INTEGER, powerLevel);
+            pdc.set(nsKey(PDC_PROJ_POWER), PersistentDataType.INTEGER, powerLevel);
             hasCustom = true;
         }
         if (punchLevel > 0 && levelConfig.hasKnockbackEffect(Enchantment.PUNCH.getKey().getKey())) {
-            pdc.set(new NamespacedKey(plugin, PDC_PROJ_PUNCH), PersistentDataType.INTEGER, punchLevel);
+            pdc.set(nsKey(PDC_PROJ_PUNCH), PersistentDataType.INTEGER, punchLevel);
             hasCustom = true;
         }
         if (flameLevel > 0 && levelConfig.hasFireEffect(Enchantment.FLAME.getKey().getKey())) {
-            pdc.set(new NamespacedKey(plugin, PDC_PROJ_FLAME), PersistentDataType.INTEGER, flameLevel);
+            pdc.set(nsKey(PDC_PROJ_FLAME), PersistentDataType.INTEGER, flameLevel);
             hasCustom = true;
         }
         if (infinityLevel > 0 && levelConfig.hasDamageEffect(Enchantment.INFINITY.getKey().getKey())) {
-            pdc.set(new NamespacedKey(plugin, PDC_PROJ_INFINITY), PersistentDataType.INTEGER, infinityLevel);
+            pdc.set(nsKey(PDC_PROJ_INFINITY), PersistentDataType.INTEGER, infinityLevel);
             hasCustom = true;
         }
         if (quickChargeLevel > 0 && levelConfig.hasDamageEffect(Enchantment.QUICK_CHARGE.getKey().getKey())) {
-            pdc.set(new NamespacedKey(plugin, PDC_PROJ_QUICK_CHARGE), PersistentDataType.INTEGER, quickChargeLevel);
+            pdc.set(nsKey(PDC_PROJ_QUICK_CHARGE), PersistentDataType.INTEGER, quickChargeLevel);
             hasCustom = true;
         }
         if (piercingLevel > 0 && levelConfig.hasDamageEffect(Enchantment.PIERCING.getKey().getKey())) {
-            pdc.set(new NamespacedKey(plugin, PDC_PROJ_PIERCING), PersistentDataType.INTEGER, piercingLevel);
+            pdc.set(nsKey(PDC_PROJ_PIERCING), PersistentDataType.INTEGER, piercingLevel);
             hasCustom = true;
         }
 
         if (hasCustom) {
-            pdc.set(new NamespacedKey(plugin, PDC_PROJ_CUSTOM), PersistentDataType.BYTE, (byte)1);
+            pdc.set(nsKey(PDC_PROJ_CUSTOM), PersistentDataType.BYTE, (byte)1);
         }
     }
 
@@ -361,7 +368,7 @@ public class LevelEffectListener implements Listener {
         ItemMeta meta = weapon.getItemMeta();
         if (meta == null) return;
 
-        stripVanillaWeaponDamage(event, meta);
+        stripVanillaWeaponDamage(event, meta, target);
         stripVanillaFireAspect(meta, target);
     }
 
@@ -371,11 +378,11 @@ public class LevelEffectListener implements Listener {
      * 剥离：damage / (1 + 0.25 × powerLevel)
      */
     private void stripVanillaBowDamage(EntityDamageByEntityEvent event, Projectile proj) {
-        org.bukkit.persistence.PersistentDataContainer pdc = proj.getPersistentDataContainer();
-        NamespacedKey customKey = new NamespacedKey(plugin, PDC_PROJ_CUSTOM);
+        PersistentDataContainer pdc = proj.getPersistentDataContainer();
+        NamespacedKey customKey = nsKey(PDC_PROJ_CUSTOM);
         if (!pdc.has(customKey, PersistentDataType.BYTE)) return;
 
-        NamespacedKey powerKey = new NamespacedKey(plugin, PDC_PROJ_POWER);
+        NamespacedKey powerKey = nsKey(PDC_PROJ_POWER);
         Integer powerLevel = pdc.get(powerKey, PersistentDataType.INTEGER);
         if (powerLevel != null && powerLevel > 0) {
             event.setDamage(event.getDamage() / (1.0 + 0.25 * powerLevel));
@@ -423,7 +430,7 @@ public class LevelEffectListener implements Listener {
         event.setCancelled(true);
     }
 
-    private void stripVanillaWeaponDamage(EntityDamageByEntityEvent event, ItemMeta meta) {
+    private void stripVanillaWeaponDamage(EntityDamageByEntityEvent event, ItemMeta meta, LivingEntity target) {
         double vanillaBonus = 0.0;
 
         for (Enchantment enchant : WEAPON_DAMAGE_ENCHANTS) {
@@ -441,6 +448,15 @@ public class LevelEffectListener implements Listener {
                 }
                 continue;
             }
+
+            /* 亡灵杀手：仅对亡灵生物生效 */
+            if (enchant == Enchantment.SMITE && !isUndead(target)) continue;
+
+            /* 节肢杀手：仅对节肢生物生效 */
+            if (enchant == Enchantment.BANE_OF_ARTHROPODS && !isArthropod(target)) continue;
+
+            /* 穿刺：仅对水生生物生效 */
+            if (enchant == Enchantment.IMPALING && !isAquatic(target)) continue;
 
             if (!levelConfig.hasDamageEffect(key)) continue;
 
@@ -496,7 +512,7 @@ public class LevelEffectListener implements Listener {
         ItemMeta meta = weapon.getItemMeta();
         if (meta == null) return;
 
-        applyWeaponDamageBonus(event, meta);
+        applyWeaponDamageBonus(event, meta, target);
         applyDensityDamage(event, meta, player);
         applyRiptideDamage(event, player);
         applyDepthStriderDamage(event, player);
@@ -508,7 +524,7 @@ public class LevelEffectListener implements Listener {
         applyWindBurst(event, meta, player);
     }
 
-    private void applyWeaponDamageBonus(EntityDamageByEntityEvent event, ItemMeta meta) {
+    private void applyWeaponDamageBonus(EntityDamageByEntityEvent event, ItemMeta meta, LivingEntity target) {
         double bestPercent = 0.0;
         int bestLevel = 0;
         String bestKey = null;
@@ -519,6 +535,15 @@ public class LevelEffectListener implements Listener {
 
             String key = enchant.getKey().getKey();
             if (!levelConfig.hasDamageEffect(key)) continue;
+
+            /* 亡灵杀手：仅对亡灵生物生效 */
+            if (enchant == Enchantment.SMITE && !isUndead(target)) continue;
+
+            /* 节肢杀手：仅对节肢生物生效 */
+            if (enchant == Enchantment.BANE_OF_ARTHROPODS && !isArthropod(target)) continue;
+
+            /* 穿刺：仅对水生生物生效 */
+            if (enchant == Enchantment.IMPALING && !isAquatic(target)) continue;
 
             double percent = levelConfig.getDamagePercentPerLevel(key);
             if (percent > bestPercent || (percent == bestPercent && level > bestLevel)) {
@@ -535,6 +560,31 @@ public class LevelEffectListener implements Listener {
         event.setDamage(event.getDamage() * multiplier);
     }
 
+    private static boolean isUndead(LivingEntity entity) {
+        return switch (entity.getType()) {
+            case ZOMBIE, SKELETON, WITHER, WITHER_SKELETON, STRAY, HUSK,
+                 ZOMBIFIED_PIGLIN, SKELETON_HORSE, ZOMBIE_HORSE, PHANTOM,
+                 DROWNED, ZOGLIN, ZOMBIE_VILLAGER, BOGGED -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isArthropod(LivingEntity entity) {
+        return switch (entity.getType()) {
+            case SPIDER, CAVE_SPIDER, SILVERFISH, ENDERMITE, BEE -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isAquatic(LivingEntity entity) {
+        return switch (entity.getType()) {
+            case GUARDIAN, ELDER_GUARDIAN, SQUID, GLOW_SQUID, TURTLE,
+                 AXOLOTL, DOLPHIN, COD, SALMON, PUFFERFISH, TROPICAL_FISH,
+                 DROWNED -> true;
+            default -> false;
+        };
+    }
+
     /**
      * 深海探索者：玩家在水中时，根据靴子上的深海探索者等级增加伤害。
      * 每级 +2%（默认），满级 X = +20%。
@@ -549,7 +599,7 @@ public class LevelEffectListener implements Listener {
 
         ItemMeta meta = boots.getItemMeta();
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_DEPTH_STRIDER_RPG_MANAGED),
+            nsKey(PDC_DEPTH_STRIDER_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         int level = meta.getEnchantLevel(Enchantment.DEPTH_STRIDER);
@@ -580,7 +630,7 @@ public class LevelEffectListener implements Listener {
 
         ItemMeta meta = boots.getItemMeta();
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_SOUL_SPEED_RPG_MANAGED),
+            nsKey(PDC_SOUL_SPEED_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         int level = meta.getEnchantLevel(Enchantment.SOUL_SPEED);
@@ -609,7 +659,7 @@ public class LevelEffectListener implements Listener {
 
         ItemMeta meta = leggings.getItemMeta();
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_SWIFT_SNEAK_RPG_MANAGED),
+            nsKey(PDC_SWIFT_SNEAK_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         int level = meta.getEnchantLevel(Enchantment.SWIFT_SNEAK);
@@ -642,7 +692,7 @@ public class LevelEffectListener implements Listener {
 
         /* RPG 模块接管：物品有标记则跳过 */
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_KNOCKBACK_RPG_MANAGED),
+            nsKey(PDC_KNOCKBACK_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         String key = Enchantment.KNOCKBACK.getKey().getKey();
@@ -675,15 +725,15 @@ public class LevelEffectListener implements Listener {
      * 火矢：每级 80 tick 燃烧（默认，与火焰附加相同）
      */
     private void applyBowEnchantEffects(EntityDamageByEntityEvent event, Projectile proj) {
-        org.bukkit.persistence.PersistentDataContainer pdc = proj.getPersistentDataContainer();
-        NamespacedKey customKey = new NamespacedKey(plugin, PDC_PROJ_CUSTOM);
+        PersistentDataContainer pdc = proj.getPersistentDataContainer();
+        NamespacedKey customKey = nsKey(PDC_PROJ_CUSTOM);
         if (!pdc.has(customKey, PersistentDataType.BYTE)) return;
 
         Player shooter = (Player) proj.getShooter();
         if (shooter == null) return;
 
         /* 力量：伤害加成 */
-        NamespacedKey powerKey = new NamespacedKey(plugin, PDC_PROJ_POWER);
+        NamespacedKey powerKey = nsKey(PDC_PROJ_POWER);
         Integer powerLevel = pdc.get(powerKey, PersistentDataType.INTEGER);
         if (powerLevel != null && powerLevel > 0) {
             String key = Enchantment.POWER.getKey().getKey();
@@ -696,7 +746,7 @@ public class LevelEffectListener implements Listener {
         LivingEntity target = (LivingEntity) event.getEntity();
 
         /* 冲击：击退 */
-        NamespacedKey punchKey = new NamespacedKey(plugin, PDC_PROJ_PUNCH);
+        NamespacedKey punchKey = nsKey(PDC_PROJ_PUNCH);
         Integer punchLevel = pdc.get(punchKey, PersistentDataType.INTEGER);
         if (punchLevel != null && punchLevel > 0) {
             String key = Enchantment.PUNCH.getKey().getKey();
@@ -719,7 +769,7 @@ public class LevelEffectListener implements Listener {
         }
 
         /* 火矢：燃烧 */
-        NamespacedKey flameKey = new NamespacedKey(plugin, PDC_PROJ_FLAME);
+        NamespacedKey flameKey = nsKey(PDC_PROJ_FLAME);
         Integer flameLevel = pdc.get(flameKey, PersistentDataType.INTEGER);
         if (flameLevel != null && flameLevel > 0) {
             String key = Enchantment.FLAME.getKey().getKey();
@@ -729,7 +779,7 @@ public class LevelEffectListener implements Listener {
         }
 
         /* 无限：额外射弹伤害（保留原版无限箭矢效果） */
-        NamespacedKey infinityKey = new NamespacedKey(plugin, PDC_PROJ_INFINITY);
+        NamespacedKey infinityKey = nsKey(PDC_PROJ_INFINITY);
         Integer infinityLevel = pdc.get(infinityKey, PersistentDataType.INTEGER);
         if (infinityLevel != null && infinityLevel > 0) {
             String key = Enchantment.INFINITY.getKey().getKey();
@@ -740,7 +790,7 @@ public class LevelEffectListener implements Listener {
         }
 
         /* 快速填装：额外射弹伤害 */
-        NamespacedKey quickChargeKey = new NamespacedKey(plugin, PDC_PROJ_QUICK_CHARGE);
+        NamespacedKey quickChargeKey = nsKey(PDC_PROJ_QUICK_CHARGE);
         Integer qcLevel = pdc.get(quickChargeKey, PersistentDataType.INTEGER);
         if (qcLevel != null && qcLevel > 0) {
             String key = Enchantment.QUICK_CHARGE.getKey().getKey();
@@ -751,7 +801,7 @@ public class LevelEffectListener implements Listener {
         }
 
         /* 穿透：额外射弹伤害（保留原版穿透效果） */
-        NamespacedKey piercingKey = new NamespacedKey(plugin, PDC_PROJ_PIERCING);
+        NamespacedKey piercingKey = nsKey(PDC_PROJ_PIERCING);
         Integer piercingLevel = pdc.get(piercingKey, PersistentDataType.INTEGER);
         if (piercingLevel != null && piercingLevel > 0) {
             String key = Enchantment.PIERCING.getKey().getKey();
@@ -834,12 +884,12 @@ public class LevelEffectListener implements Listener {
      * 每级 +2%（默认），乘法叠加到当前伤害值上。
      */
     private void applyTridentEnchantEffects(EntityDamageByEntityEvent event, Trident trident) {
-        org.bukkit.persistence.PersistentDataContainer pdc = trident.getPersistentDataContainer();
-        NamespacedKey customKey = new NamespacedKey(plugin, PDC_TRIDENT_CUSTOM);
+        PersistentDataContainer pdc = trident.getPersistentDataContainer();
+        NamespacedKey customKey = nsKey(PDC_TRIDENT_CUSTOM);
         if (!pdc.has(customKey, PersistentDataType.BYTE)) return;
 
         /* 忠诚：投掷命中伤害加成 */
-        NamespacedKey loyaltyKey = new NamespacedKey(plugin, PDC_TRIDENT_LOYALTY);
+        NamespacedKey loyaltyKey = nsKey(PDC_TRIDENT_LOYALTY);
         Integer loyaltyLevel = pdc.get(loyaltyKey, PersistentDataType.INTEGER);
         if (loyaltyLevel != null && loyaltyLevel > 0) {
             String key = Enchantment.LOYALTY.getKey().getKey();
@@ -922,7 +972,7 @@ public class LevelEffectListener implements Listener {
 
             /* RPG 接管：有标记则跳该件 */
             if (meta.getPersistentDataContainer().has(
-                new NamespacedKey(plugin, PDC_PROTECTION_RPG_MANAGED),
+                nsKey(PDC_PROTECTION_RPG_MANAGED),
                 PersistentDataType.BYTE)) continue;
 
             /* 同时计算专有保护和泛用保护，取较高者 */
@@ -996,7 +1046,7 @@ public class LevelEffectListener implements Listener {
             ItemMeta meta = armor.getItemMeta();
 
             if (meta.getPersistentDataContainer().has(
-                new NamespacedKey(plugin, PDC_PROTECTION_RPG_MANAGED),
+                nsKey(PDC_PROTECTION_RPG_MANAGED),
                 PersistentDataType.BYTE)) continue;
 
             int specificLevel = 0;
@@ -1048,7 +1098,7 @@ public class LevelEffectListener implements Listener {
             ItemMeta meta = armor.getItemMeta();
 
             if (meta.getPersistentDataContainer().has(
-                new NamespacedKey(plugin, PDC_FIRE_TICK_RPG_MANAGED),
+                nsKey(PDC_FIRE_TICK_RPG_MANAGED),
                 PersistentDataType.BYTE)) continue;
 
             /* 同时计算火焰保护和泛用保护，取较高者 */
@@ -1124,7 +1174,7 @@ public class LevelEffectListener implements Listener {
             ItemMeta meta = armor.getItemMeta();
 
             if (meta.getPersistentDataContainer().has(
-                new NamespacedKey(plugin, PDC_BLAST_KNOCKBACK_RPG_MANAGED),
+                nsKey(PDC_BLAST_KNOCKBACK_RPG_MANAGED),
                 PersistentDataType.BYTE)) continue;
 
             double specific = 0.0;
@@ -1192,7 +1242,7 @@ public class LevelEffectListener implements Listener {
             ItemMeta meta = armor.getItemMeta();
 
             if (meta.getPersistentDataContainer().has(
-                new NamespacedKey(plugin, PDC_PROJECTILE_KNOCKBACK_RPG_MANAGED),
+                nsKey(PDC_PROJECTILE_KNOCKBACK_RPG_MANAGED),
                 PersistentDataType.BYTE)) continue;
 
             double specific = 0.0;
@@ -1249,7 +1299,7 @@ public class LevelEffectListener implements Listener {
             ItemMeta meta = armor.getItemMeta();
 
             if (meta.getPersistentDataContainer().has(
-                new NamespacedKey(plugin, PDC_THORNS_RPG_MANAGED),
+                nsKey(PDC_THORNS_RPG_MANAGED),
                 PersistentDataType.BYTE)) continue;
 
             int level = meta.getEnchantLevel(Enchantment.THORNS);
@@ -1306,7 +1356,7 @@ public class LevelEffectListener implements Listener {
 
         ItemMeta meta = helmet.getItemMeta();
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_RESPIRATION_RPG_MANAGED),
+            nsKey(PDC_RESPIRATION_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         int level = meta.getEnchantLevel(Enchantment.RESPIRATION);
@@ -1354,7 +1404,7 @@ public class LevelEffectListener implements Listener {
 
         ItemMeta meta = boots.getItemMeta();
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_FROST_WALKER_RPG_MANAGED),
+            nsKey(PDC_FROST_WALKER_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         int level = meta.getEnchantLevel(Enchantment.FROST_WALKER);
@@ -1428,8 +1478,8 @@ public class LevelEffectListener implements Listener {
         if (caught.getTicksLived() > 1) return;
 
         /* 防刷：PDC 标记防止同一物品实体被重复处理 */
-        NamespacedKey processedKey = new NamespacedKey(plugin, "fish_processed");
-        org.bukkit.persistence.PersistentDataContainer pdc = caught.getPersistentDataContainer();
+        NamespacedKey processedKey = nsKey("fish_processed");
+        PersistentDataContainer pdc = caught.getPersistentDataContainer();
         if (pdc.has(processedKey, PersistentDataType.BYTE)) return;
         pdc.set(processedKey, PersistentDataType.BYTE, (byte) 1);
 
@@ -1573,7 +1623,7 @@ public class LevelEffectListener implements Listener {
         String pdcKey = PDC_PLACED_PREFIX + cx + "_" + cy + "_" + cz;
 
         block.getChunk().getPersistentDataContainer().set(
-            new NamespacedKey(plugin, pdcKey),
+            nsKey(pdcKey),
             PersistentDataType.BYTE, (byte) 1
         );
     }
@@ -1613,7 +1663,7 @@ public class LevelEffectListener implements Listener {
 
         /* RPG 模块接管：工具 PDC 有标记则跳过 */
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_SILK_TOUCH_RPG_MANAGED),
+            nsKey(PDC_SILK_TOUCH_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         String key = Enchantment.SILK_TOUCH.getKey().getKey();
@@ -1718,7 +1768,7 @@ public class LevelEffectListener implements Listener {
 
         /* RPG 模块接管：工具 PDC 有标记则跳过 */
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_FORTUNE_RPG_MANAGED),
+            nsKey(PDC_FORTUNE_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         String key = Enchantment.FORTUNE.getKey().getKey();
@@ -1809,21 +1859,21 @@ public class LevelEffectListener implements Listener {
 
     private boolean isBlockPdcMarked(Block block, String pdcKey) {
         return block.getChunk().getPersistentDataContainer().has(
-            new NamespacedKey(plugin, pdcKey),
+            nsKey(pdcKey),
             PersistentDataType.BYTE
         );
     }
 
     private void markBlockPdc(Block block, String pdcKey) {
         block.getChunk().getPersistentDataContainer().set(
-            new NamespacedKey(plugin, pdcKey),
+            nsKey(pdcKey),
             PersistentDataType.BYTE, (byte) 1
         );
     }
 
     private void removeBlockPdcMark(Block block, String pdcKey) {
         block.getChunk().getPersistentDataContainer().remove(
-            new NamespacedKey(plugin, pdcKey)
+            nsKey(pdcKey)
         );
     }
 
@@ -1866,7 +1916,7 @@ public class LevelEffectListener implements Listener {
 
         /* RPG 模块接管：工具 PDC 有标记则跳过 */
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_EFFICIENCY_RPG_MANAGED),
+            nsKey(PDC_EFFICIENCY_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         String key = Enchantment.EFFICIENCY.getKey().getKey();
@@ -1917,7 +1967,7 @@ public class LevelEffectListener implements Listener {
             if (helmet != null && helmet.hasItemMeta()) {
                 ItemMeta hMeta = helmet.getItemMeta();
                 if (!hMeta.getPersistentDataContainer().has(
-                    new NamespacedKey(plugin, PDC_AQUA_AFFINITY_RPG_MANAGED),
+                    nsKey(PDC_AQUA_AFFINITY_RPG_MANAGED),
                     PersistentDataType.BYTE)) {
                     int aquaLevel = hMeta.getEnchantLevel(Enchantment.AQUA_AFFINITY);
                     String aquaKey = Enchantment.AQUA_AFFINITY.getKey().getKey();
@@ -2096,7 +2146,7 @@ public class LevelEffectListener implements Listener {
 
         /* RPG 模块接管窗口：由 RPG 模块在更高优先级处理 */
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_DURABILITY_RPG_MANAGED),
+            nsKey(PDC_DURABILITY_RPG_MANAGED),
             PersistentDataType.BYTE)) {
             return;
         }
@@ -2251,7 +2301,7 @@ public class LevelEffectListener implements Listener {
 
         /* RPG 模块接管：有标记则跳过 */
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_MENDING_RPG_MANAGED),
+            nsKey(PDC_MENDING_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         if (meta.getEnchantLevel(Enchantment.MENDING) > 0
@@ -2279,7 +2329,7 @@ public class LevelEffectListener implements Listener {
 
         /* RPG 模块接管：武器 PDC 有标记则跳过 */
         if (meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, PDC_LOOTING_RPG_MANAGED),
+            nsKey(PDC_LOOTING_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         String key = Enchantment.LOOTING.getKey().getKey();

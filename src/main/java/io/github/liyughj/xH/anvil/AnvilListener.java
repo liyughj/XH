@@ -1,5 +1,6 @@
 package io.github.liyughj.xH.anvil;
 
+import io.github.liyughj.xH.gun.GunListener;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -46,6 +47,26 @@ public class AnvilListener implements Listener {
     public void onPrepareAnvil(PrepareAnvilEvent event) {
         /* 获取铁砧视图对象（新API，替代AnvilInventory的过时方法） */
         AnvilView anvilView = event.getView();
+
+        /* 枪械修复：若第一格是枪械 + 第二格是修复材料 */
+        ItemStack firstItem = anvilView.getItem(0);
+        ItemStack secondItem = anvilView.getItem(1);
+
+        if (GunListener.isGunStatic(firstItem) && secondItem != null && !secondItem.getType().isAir()) {
+            if (AnvilRepairManager.isRepairMaterial(secondItem, firstItem)) {
+                // 计算修复成本和结果
+                int cost = AnvilRepairManager.getRepairCost(secondItem.getType(), firstItem);
+                ItemStack result = AnvilRepairManager.repairGun(firstItem, null, secondItem);
+                event.setResult(result);
+                anvilView.setRepairCost(Math.min(cost, 39)); // 防止"过于昂贵"
+                return;
+            } else {
+                // 不是修复材料，阻止操作
+                event.setResult(null);
+                anvilView.setRepairCost(0);
+                return;
+            }
+        }
 
         /* 获取当前修复成本（原计算值） */
         int originalCost = anvilView.getRepairCost();

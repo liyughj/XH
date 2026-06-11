@@ -54,6 +54,12 @@ public class EnchantmentLevelListener implements Listener {
         this.plugin = plugin;
     }
 
+    /** 缓存 NamespacedKey，避免每次事件重建 */
+    private final java.util.Map<String, NamespacedKey> nsKeyCache = new java.util.HashMap<>();
+    private NamespacedKey nsKey(String key) {
+        return nsKeyCache.computeIfAbsent(key, k -> new NamespacedKey(plugin, k));
+    }
+
     /* ==================== 工具：挖掘方块 → TOOL 类别附魔 ==================== */
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -68,7 +74,7 @@ public class EnchantmentLevelListener implements Listener {
 
         /* RPG 模块接管：物品 PDC 有标记则跳过 */
         if (meta != null && meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, EnchantmentLevelData.PDC_XP_TOOL_RPG_MANAGED),
+            nsKey(EnchantmentLevelData.PDC_XP_TOOL_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         if (EnchantmentLevelData.getAllEnchantments(tool).isEmpty()) return;
@@ -106,7 +112,7 @@ public class EnchantmentLevelListener implements Listener {
 
         /* RPG 模块接管：物品 PDC 有标记则跳过 */
         if (meta != null && meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, EnchantmentLevelData.PDC_XP_WEAPON_RPG_MANAGED),
+            nsKey(EnchantmentLevelData.PDC_XP_WEAPON_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         if (EnchantmentLevelData.getAllEnchantments(weapon).isEmpty()) return;
@@ -149,7 +155,7 @@ public class EnchantmentLevelListener implements Listener {
 
         /* RPG 模块接管：物品 PDC 有标记则跳过 */
         if (meta != null && meta.getPersistentDataContainer().has(
-            new NamespacedKey(plugin, EnchantmentLevelData.PDC_XP_BOW_RPG_MANAGED),
+            nsKey(EnchantmentLevelData.PDC_XP_BOW_RPG_MANAGED),
             PersistentDataType.BYTE)) return;
 
         if (EnchantmentLevelData.getAllEnchantments(bow).isEmpty()) return;
@@ -192,7 +198,7 @@ public class EnchantmentLevelListener implements Listener {
 
             /* RPG 模块接管：物品 PDC 有标记则跳过 */
             if (meta != null && meta.getPersistentDataContainer().has(
-                new NamespacedKey(plugin, EnchantmentLevelData.PDC_XP_ARMOR_RPG_MANAGED),
+                nsKey(EnchantmentLevelData.PDC_XP_ARMOR_RPG_MANAGED),
                 PersistentDataType.BYTE)) continue;
 
             if (EnchantmentLevelData.getAllEnchantments(piece).isEmpty()) continue;

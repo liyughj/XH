@@ -49,7 +49,7 @@ public class AttributeCalculator {
     private static CritMode critMode = CritMode.ADD;
 
     /** 伤害类型 */
-    public enum DamageType { MELEE, PROJECTILE }
+    public enum DamageType { MELEE, PROJECTILE, GUN }
 
     /**
      * 自定义伤害计算器接口。
@@ -361,12 +361,31 @@ public class AttributeCalculator {
         if (type == DamageType.MELEE) {
             specificDamage = getAttr(attrs, RpgAttribute.MELEE_DAMAGE);
             specificBonus = getAttr(attrs, RpgAttribute.MELEE_BONUS);
+        } else if (type == DamageType.GUN) {
+            specificDamage = getAttr(attrs, RpgAttribute.GUN_DAMAGE);
+            specificBonus = getAttr(attrs, RpgAttribute.GUN_BONUS);
+
+            // 特殊武器伤害覆写
+            double crossbowDmg = getAttr(attrs, RpgAttribute.GUN_CROSSBOW_DAMAGE);
+            if (crossbowDmg > 0) specificDamage = crossbowDmg;
+
+            double grenadeDmg = getAttr(attrs, RpgAttribute.GUN_GRENADE_DAMAGE);
+            if (grenadeDmg > 0) specificDamage = grenadeDmg;
+
+            double rocketDmg = getAttr(attrs, RpgAttribute.GUN_ROCKET_DAMAGE);
+            if (rocketDmg > 0) specificDamage = rocketDmg;
+
+            double laserDmg = getAttr(attrs, RpgAttribute.GUN_LASER_DAMAGE);
+            if (laserDmg > 0) specificDamage = laserDmg;
+
+            double flameDmg = getAttr(attrs, RpgAttribute.GUN_FLAME_DAMAGE_PER_TICK);
+            if (flameDmg > 0) specificDamage = flameDmg;
         } else {
             specificDamage = getAttr(attrs, RpgAttribute.PROJECTILE_DAMAGE);
             specificBonus = getAttr(attrs, RpgAttribute.PROJECTILE_BONUS);
         }
 
-        /* 近战/射弹 = 专属×专属加成% + 通用×通用加成% */
+        /* 近战/射弹/枪械 = 专属×专属加成% + 通用×通用加成% */
         double result = specificDamage * (1.0 + specificBonus / 100.0)
                       + damage * (1.0 + damageBonus / 100.0);
 
