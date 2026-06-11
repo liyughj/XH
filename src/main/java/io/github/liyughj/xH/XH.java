@@ -13,6 +13,9 @@ import io.github.liyughj.xH.enchantingTable.EnchantingItemListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingLevelListener;
 import io.github.liyughj.xH.enchantingTable.EnchantingTableConfig;
 import io.github.liyughj.xH.enchantingTable.EnchantingTableListener;
+import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
+import io.github.liyughj.xH.rpg.Attribute.AttributeListener;
+import io.github.liyughj.xH.rpg.Attribute.RpgCombatListener;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -40,6 +43,9 @@ public final class XH extends JavaPlugin {
     public void onEnable() {
         /* 初始化附魔经验数据 PDC 存储系统 */
         EnchantmentLevelData.init(this);
+
+        /* 初始化 RPG 属性 PDC 存储系统 */
+        AttributeStorage.init(this);
 
         /* 初始化附魔台配置（使用 enchantingTable.yml） */
         this.enchantingTableConfig = new EnchantingTableConfig(this);
@@ -117,6 +123,12 @@ public final class XH extends JavaPlugin {
             /* 注册附魔经验显示（含ProtocolLib数据包监听器） */
             this.enchantmentLevelDisplay = new EnchantmentLevelDisplay(this, levelManager, this.levelConfig);
             getServer().getPluginManager().registerEvents(enchantmentLevelDisplay, this);
+
+            /* 注册 RPG 属性监听器（攻击速度 A+C 方案） */
+            getServer().getPluginManager().registerEvents(new AttributeListener(), this);
+
+            /* 注册 RPG 战斗监听器（伤害 + 暴击 + 吸血 + 穿透） */
+            getServer().getPluginManager().registerEvents(new RpgCombatListener(this), this);
 
             getLogger().info("附魔升级系统已启用");
         } else {
