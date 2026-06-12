@@ -1,5 +1,7 @@
 package io.github.liyughj.xH.gun;
 
+import io.github.liyughj.xH.lore.LoreConfig;
+import io.github.liyughj.xH.lore.LoreManager;
 import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
@@ -939,13 +941,17 @@ public class GunItemConfig {
         meta.getPersistentDataContainer().set(new NamespacedKey("xh", "mag_ammo"), PersistentDataType.INTEGER, 0); // 空弹匣
         if (def.itemCustomModelData > 0) meta.setCustomModelData(def.itemCustomModelData);
 
-        List<Component> lore = new ArrayList<>();
-        lore.add(Component.text("§7口径: " + def.caliber));
-        lore.add(Component.text("§7容量: " + def.capacity + "发"));
-        lore.add(Component.text("§7右键打开 → 装弹"));
-        meta.lore(lore);
-
         item.setItemMeta(meta);
+
+        // 应用 LoreManager 模板生成 lore
+        if (LoreConfig.hasInstance() && LoreConfig.instance().isEnabled()) {
+            List<Component> loreLines = LoreManager.buildMagazineLore(def.caliber, def.capacity);
+            if (!loreLines.isEmpty()) {
+                ItemMeta updatedMeta = item.getItemMeta();
+                updatedMeta.lore(loreLines);
+                item.setItemMeta(updatedMeta);
+            }
+        }
         return item;
     }
 
@@ -988,6 +994,16 @@ public class GunItemConfig {
         meta.displayName(Component.text(displayName));
 
         item.setItemMeta(meta);
+
+        // 应用 LoreManager 模板生成 lore
+        if (LoreConfig.hasInstance() && LoreConfig.instance().isEnabled()) {
+            List<Component> loreLines = LoreManager.buildGunLore(item);
+            if (!loreLines.isEmpty()) {
+                ItemMeta updatedMeta = item.getItemMeta();
+                updatedMeta.lore(loreLines);
+                item.setItemMeta(updatedMeta);
+            }
+        }
 
         // 初始化弹匣容量
         double cap = AttributeStorage.getAttrValue(item, RpgAttribute.GUN_MAG_CAPACITY);

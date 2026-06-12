@@ -135,6 +135,10 @@ public final class XH extends JavaPlugin {
             getLogger().info("附魔升级系统已禁用（配置中 enabled=false）");
         }
 
+        /* 初始化 Lore 模板系统 */
+        io.github.liyughj.xH.lore.LoreConfig loreConfig = new io.github.liyughj.xH.lore.LoreConfig(this);
+        io.github.liyughj.xH.lore.LoreManager.init(loreConfig);
+
         /* 初始化枪械配置（gun.yml） */
         io.github.liyughj.xH.gun.GunItemConfig gunItemConfig = new io.github.liyughj.xH.gun.GunItemConfig(this);
         AttributeStorage.setGunItemConfig(gunItemConfig);

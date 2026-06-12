@@ -149,13 +149,25 @@ public class AmmoConfig {
         CaliberDef cal = calibers.get(caliberId);
         String caliberLabel = cal != null ? cal.displayName : caliberId;
         meta.displayName(Component.text("§e" + def.displayName + " §7(" + caliberLabel + ")"));
-        if (!def.lore.isEmpty()) {
-            meta.lore(Collections.singletonList(Component.text("§7" + def.lore)));
-        }
         meta.getPersistentDataContainer().set(new NamespacedKey("xh", "ammo_caliber"), PersistentDataType.STRING, caliberId);
         meta.getPersistentDataContainer().set(new NamespacedKey("xh", "ammo_type"), PersistentDataType.STRING, ammoTypeId);
         if (def.itemCustomModelData > 0) meta.setCustomModelData(def.itemCustomModelData);
         item.setItemMeta(meta);
+
+        // 应用 LoreManager 模板生成 lore
+        if (io.github.liyughj.xH.lore.LoreConfig.hasInstance()
+            && io.github.liyughj.xH.lore.LoreConfig.instance().isEnabled()) {
+            List<Component> loreLines = io.github.liyughj.xH.lore.LoreManager.buildAmmoLore(
+                caliberId, def.displayName,
+                def.damageMult, def.penetrationBonus,
+                def.spreadMult, def.recoilMult, def.bulletSpeedMult);
+            if (!loreLines.isEmpty()) {
+                ItemMeta updatedMeta = item.getItemMeta();
+                updatedMeta.lore(loreLines);
+                item.setItemMeta(updatedMeta);
+            }
+        }
+
         return item;
     }
 
