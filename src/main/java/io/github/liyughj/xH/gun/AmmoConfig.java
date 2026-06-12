@@ -1,8 +1,14 @@
 package io.github.liyughj.xH.gun;
 
+import net.kyori.adventure.text.Component;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -123,6 +129,35 @@ public class AmmoConfig {
     public boolean isEnabled() { return enabled; }
 
     public void reload() { loadConfig(); }
+
+    /** 获取所有弹种ID */
+    public Set<String> getAllAmmoTypeIds() { return Collections.unmodifiableSet(ammoTypes.keySet()); }
+
+    /** 获取所有口径ID */
+    public Set<String> getCaliberIds() { return Collections.unmodifiableSet(calibers.keySet()); }
+
+    /** 根据口径+弹种ID创建弹药 ItemStack */
+    public ItemStack createAmmoItemStack(String caliberId, String ammoTypeId) {
+        AmmoTypeDef def = ammoTypes.get(ammoTypeId);
+        if (def == null) return null;
+        Material mat = Material.getMaterial(def.itemMaterial);
+        if (mat == null) mat = Material.IRON_NUGGET;
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return item;
+
+        CaliberDef cal = calibers.get(caliberId);
+        String caliberLabel = cal != null ? cal.displayName : caliberId;
+        meta.displayName(Component.text("§e" + def.displayName + " §7(" + caliberLabel + ")"));
+        if (!def.lore.isEmpty()) {
+            meta.lore(Collections.singletonList(Component.text("§7" + def.lore)));
+        }
+        meta.getPersistentDataContainer().set(new NamespacedKey("xh", "ammo_caliber"), PersistentDataType.STRING, caliberId);
+        meta.getPersistentDataContainer().set(new NamespacedKey("xh", "ammo_type"), PersistentDataType.STRING, ammoTypeId);
+        if (def.itemCustomModelData > 0) meta.setCustomModelData(def.itemCustomModelData);
+        item.setItemMeta(meta);
+        return item;
+    }
 
     /* ==================== 数据类 ==================== */
 
@@ -309,7 +344,47 @@ public class AmmoConfig {
         addAmmoType(dc, "overcharged", "过载能量电池", 1.40, 1, 1.0, 1.0, 1.80, 1.10, 1.0, 1.0, 1.0, "GLOWSTONE_DUST", 20);
         addAmmoType(dc, "focused", "聚焦能量电池", 0.90, 3, 0.60, 1.0, 1.20, 1.0, 1.0, 1.0, 1.0, "AMETHYST_SHARD", 21);
 
-        // 特殊效果 (在默认配置中不写，由管理员按需添加)
+        // --- 弹种特殊效果 ---
+        // hp: 空尖弹 → 流血
+        dc.set("ammo_types.hp.effects.bleed.chance", 20);
+        dc.set("ammo_types.hp.effects.bleed.damage", 3);
+        dc.set("ammo_types.hp.effects.bleed.ticks", 40);
+        // ap: 穿甲弹 → 无视护甲
+        dc.set("ammo_types.ap.effects.armor_ignore", 20);
+        // flechette: 箭形弹 → 更高护甲穿透
+        dc.set("ammo_types.flechette.effects.armor_ignore", 30);
+        // tracer: 曳光弹 → 弹道尾迹 + 微量点燃
+        dc.set("ammo_types.tracer.effects.trail", "flame");
+        dc.set("ammo_types.tracer.effects.ignite.chance", 15);
+        dc.set("ammo_types.tracer.effects.ignite.ticks", 30);
+        // incendiary: 燃烧弹 → 点燃 + 火焰额外伤害
+        dc.set("ammo_types.incendiary.effects.ignite.chance", 100);
+        dc.set("ammo_types.incendiary.effects.ignite.ticks", 60);
+        dc.set("ammo_types.incendiary.effects.fire_damage", 2);
+        // subsonic: 亚音速弹 → 消音
+        dc.set("ammo_types.subsonic.effects.silent", true);
+        // rubber: 橡胶弹 → 击退 + 非致命
+        dc.set("ammo_types.rubber.effects.knockback", 3.0);
+        dc.set("ammo_types.rubber.effects.no_kill", true);
+        // dragon_breath: 龙息弹 → 点燃 + 火焰伤害 + AOE火焰
+        dc.set("ammo_types.dragon_breath.effects.ignite.chance", 100);
+        dc.set("ammo_types.dragon_breath.effects.ignite.ticks", 80);
+        dc.set("ammo_types.dragon_breath.effects.fire_damage", 4);
+        dc.set("ammo_types.dragon_breath.effects.aoe_fire", true);
+        // he: 高爆弹 → 爆炸
+        dc.set("ammo_types.he.effects.explosion", true);
+        // heat: 破甲高爆弹 → 爆炸 + 护甲穿透
+        dc.set("ammo_types.heat.effects.explosion", true);
+        dc.set("ammo_types.heat.effects.armor_ignore", 50);
+        // smoke: 烟雾弹 → 烟雾区域
+        dc.set("ammo_types.smoke.effects.smoke", true);
+        // flash: 闪光弹 → 致盲
+        dc.set("ammo_types.flash.effects.blind.radius", 8);
+        dc.set("ammo_types.flash.effects.blind.ticks", 80);
+        // he_frag: 破片榴弹 → 爆炸 + 破片
+        dc.set("ammo_types.he_frag.effects.explosion", true);
+        dc.set("ammo_types.he_frag.effects.frag_count", 12);
+        dc.set("ammo_types.he_frag.effects.frag_damage", 8);
         try { dc.save(file); } catch (IOException e) {
             plugin.getLogger().log(Level.WARNING, "无法创建默认 ammo.yml", e);
         }

@@ -36,6 +36,7 @@ public class MagazineManager {
         boolean reloading;
         int stagedAt;
         float originalWalkSpeed = 0.2f;
+        boolean interruptible = true; // 换弹是否可被切槽打断
     }
 
     private static final Map<UUID, ReloadState> reloadStates = new ConcurrentHashMap<>();
@@ -216,10 +217,17 @@ public class MagazineManager {
         return state != null && state.reloading;
     }
 
-    /** 开始换弹。返回 true = 换弹已启动，false = 无需换弹/弹夹满/无匹配弹药 */
+    /** 开始换弹。返回 true = 换弹已启动，false = 无需换弹/弹夹满/无匹配弹药/换弹中 */
     public static boolean startReload(Player player, ItemStack weapon) {
         if (!GunSystemConfig.isSystemEnabled(player, "magazine")) return false;
-        if (isReloading(player)) return false;
+        if (isReloading(player)) {
+            player.sendActionBar(Component.text("正在换弹中...", NamedTextColor.YELLOW));
+            return false;
+        }
+
+        // 换弹期间强制退出开镜、停止全自动
+        AdsManager.forceExit(player);
+        FireModeManager.stopAuto(player);
 
         int current = getAmmo(weapon);
         int cap = getCapacity(weapon);
@@ -251,14 +259,21 @@ public class MagazineManager {
         // 分段换弹
         double staged = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_RELOAD_STAGED);
 
+        // 读取换弹可中断标记
+        boolean interruptible = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_RELOAD_INTERRUPTIBLE) >= 1.0;
+
         ReloadState state = getReloadState(player);
         state.reloading = true;
         state.originalWalkSpeed = player.getWalkSpeed();
+        state.interruptible = interruptible;
         player.setWalkSpeed(state.originalWalkSpeed * 0.8f);
         cancelReloadTask(player);
 
-        final double totalTicks = reloadTicks;
+        final double totalTicks = reloadTicks * getKillChainReloadFactor(weapon);
         final int finalStaged = (int) staged;
+
+        // 解析换弹音效
+        final Sound reloadSound = resolveReloadSound(weapon);
 
         state.reloadTaskId = new BukkitRunnable() {
             int tick = 0;
@@ -295,7 +310,7 @@ public class MagazineManager {
 
                 // 播放音效（开始/完成）
                 if (tick == 1) {
-                    player.playSound(player.getLocation(), Sound.BLOCK_LEVER_CLICK, 0.5f, 1.8f);
+                    player.playSound(player.getLocation(), reloadSound, 0.5f, 1.8f);
                 }
 
                 if (tick >= totalTicks) {
@@ -364,6 +379,15 @@ public class MagazineManager {
         }
     }
 
+    /** 仅在换弹可中断时才打断（切槽时调用） */
+    public static void cancelReloadIfInterruptible(Player player) {
+        ReloadState state = reloadStates.get(player.getUniqueId());
+        if (state == null || !state.reloading) return;
+        if (state.interruptible) {
+            cancelReload(player);
+        }
+    }
+
     private static void cancelReloadTask(Player player) {
         ReloadState state = reloadStates.get(player.getUniqueId());
         if (state != null && state.reloadTaskId >= 0) {
@@ -372,10 +396,48 @@ public class MagazineManager {
         }
     }
 
+    /** 解析换弹音效：配置优先，无效则用默认 */
+    private static Sound resolveReloadSound(ItemStack weapon) {
+        if (GunSystemConfig.gun() == null) return Sound.BLOCK_LEVER_CLICK;
+        String configured = GunSystemConfig.gun().getReloadSound(weapon.getType());
+        if (configured != null) {
+            Sound s = org.bukkit.Registry.SOUNDS.get(
+                NamespacedKey.minecraft(configured.toLowerCase()));
+            if (s != null) return s;
+        }
+        return Sound.BLOCK_LEVER_CLICK;
+    }
+
     /** 移除玩家换弹状态 */
     public static void remove(Player player) {
         cancelReloadTask(player);
         reloadStates.remove(player.getUniqueId());
+    }
+
+    /* ==================== 击杀连锁 ==================== */
+
+    /** 读取武器 PDC 中的击杀连锁换弹加速，过期则清除并返回 1.0 */
+    private static double getKillChainReloadFactor(ItemStack weapon) {
+        if (!weapon.hasItemMeta()) return 1.0;
+        var pdc = weapon.getItemMeta().getPersistentDataContainer();
+        Long expire = pdc.get(new NamespacedKey("xh", "kill_buff_expire"), PersistentDataType.LONG);
+        if (expire == null || System.currentTimeMillis() > expire) {
+            // 过期清理
+            if (expire != null) clearKillChainPDC(weapon);
+            return 1.0;
+        }
+        Double speed = pdc.get(new NamespacedKey("xh", "kill_reload_speed"), PersistentDataType.DOUBLE);
+        return speed != null ? (1.0 - speed / 100.0) : 1.0;
+    }
+
+    /** 清除武器上的击杀连锁 PDC */
+    private static void clearKillChainPDC(ItemStack weapon) {
+        var meta = weapon.getItemMeta();
+        var pdc = meta.getPersistentDataContainer();
+        pdc.remove(new NamespacedKey("xh", "kill_reload_speed"));
+        pdc.remove(new NamespacedKey("xh", "kill_damage_bonus"));
+        pdc.remove(new NamespacedKey("xh", "kill_buff_expire"));
+        weapon.setItemMeta(meta);
     }
 
     /* ==================== 弹药背包检查 ==================== */

@@ -1,11 +1,17 @@
 package io.github.liyughj.xH.gun;
 
 import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
+import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -50,6 +56,18 @@ public class GunItemConfig {
     private final Map<Material, String> weaponTypeMap = new EnumMap<>(Material.class);
     /** Material → 默认弹种ID (String) */
     private final Map<Material, String> defaultAmmoMap = new EnumMap<>(Material.class);
+    /** Material → 空仓击发音效 (Bukkit Sound 名称) */
+    private final Map<Material, String> dryFireSoundMap = new EnumMap<>(Material.class);
+    /** Material → 换弹音效 (Bukkit Sound 名称) */
+    private final Map<Material, String> reloadSoundMap = new EnumMap<>(Material.class);
+    /** Material → 射击音效 (Bukkit Sound 名称，如 ENTITY_GENERIC_EXPLODE) */
+    private final Map<Material, String> shootSoundMap = new EnumMap<>(Material.class);
+    /** gun_id → Material 反向映射 */
+    private final Map<String, Material> gunIdToMaterial = new LinkedHashMap<>();
+    /** Material → gun_id */
+    private final Map<Material, String> materialToGunId = new EnumMap<>(Material.class);
+    /** 弹匣配置 ID → MagazineDef */
+    private final Map<String, MagazineDef> magazineMap = new LinkedHashMap<>();
 
     /** 全局系统开关配置 */
     private ConfigurationSection systemsSection;
@@ -79,6 +97,11 @@ public class GunItemConfig {
         caliberMap.clear();
         weaponTypeMap.clear();
         defaultAmmoMap.clear();
+        dryFireSoundMap.clear();
+        reloadSoundMap.clear();
+        shootSoundMap.clear();
+        gunIdToMaterial.clear();
+        materialToGunId.clear();
 
         ConfigurationSection itemsSection = config.getConfigurationSection("items");
         if (itemsSection != null) {
@@ -101,10 +124,28 @@ public class GunItemConfig {
                 String defaultAmmo = attrSection.getString("default_ammo");
                 if (defaultAmmo != null && !defaultAmmo.isEmpty()) defaultAmmoMap.put(material, defaultAmmo);
 
+                String dryFireSound = attrSection.getString("gun_dry_fire_sound");
+                if (dryFireSound != null && !dryFireSound.isEmpty()) dryFireSoundMap.put(material, dryFireSound);
+
+                String reloadSound = attrSection.getString("gun_reload_sound");
+                if (reloadSound != null && !reloadSound.isEmpty()) reloadSoundMap.put(material, reloadSound);
+
+                String shootSound = attrSection.getString("gun_shoot_sound");
+                if (shootSound != null && !shootSound.isEmpty()) shootSoundMap.put(material, shootSound);
+
+                // gun_id 标识
+                String gunId = attrSection.getString("gun_id");
+                if (gunId != null && !gunId.isEmpty()) {
+                    gunIdToMaterial.put(gunId.toLowerCase(), material);
+                    materialToGunId.put(material, gunId.toLowerCase());
+                }
+
                 Map<RpgAttribute, AttributeRange> attrs = new LinkedHashMap<>();
                 for (String attrKey : attrSection.getKeys(false)) {
                     // 跳过字符串kv
-                    if (attrKey.equals("caliber") || attrKey.equals("gun_weapon_type") || attrKey.equals("default_ammo")) continue;
+                    if (attrKey.equals("caliber") || attrKey.equals("gun_weapon_type") || attrKey.equals("default_ammo")
+                        || attrKey.equals("gun_dry_fire_sound") || attrKey.equals("gun_reload_sound")
+                        || attrKey.equals("gun_shoot_sound") || attrKey.equals("gun_id")) continue;
                     RpgAttribute attr = RpgAttribute.fromKey(attrKey);
                     if (attr == null) {
                         plugin.getLogger().warning(CONFIG_FILE_NAME + ": 未知属性 \"" + attrKey + "\" (物品 " + matName + ")");
@@ -120,6 +161,25 @@ public class GunItemConfig {
         }
 
         plugin.getLogger().info("[枪械] 已加载 " + materialTemplates.size() + " 个枪械配置模板");
+
+        // 弹匣配置
+        magazineMap.clear();
+        ConfigurationSection magSection = config.getConfigurationSection("magazines");
+        if (magSection != null) {
+            for (String magId : magSection.getKeys(false)) {
+                ConfigurationSection ms = magSection.getConfigurationSection(magId);
+                if (ms == null) continue;
+                MagazineDef def = new MagazineDef();
+                def.id = magId;
+                def.displayName = ms.getString("display_name", magId);
+                def.caliber = ms.getString("caliber", "");
+                def.capacity = ms.getInt("capacity", 30);
+                def.itemMaterial = ms.getString("item_material", "IRON_INGOT");
+                def.itemCustomModelData = ms.getInt("item_custom_model_data", 0);
+                magazineMap.put(magId, def);
+            }
+        }
+        plugin.getLogger().info("[枪械] 已加载 " + magazineMap.size() + " 个弹匣配置");
     }
 
     // --- 解析配置用 ----------
@@ -150,6 +210,7 @@ public class GunItemConfig {
             "========================================================================",
             "",
             "--- 基础属性 ---",
+            "  gun_id                   枪械ID（字符串，/xh give gun <id> 使用）",
             "  gun_damage             枪械伤害（绝对值）",
             "  gun_bonus              枪械加成（%）",
             "  gun_rpm                射速（每分钟发数，RPM）",
@@ -235,6 +296,9 @@ public class GunItemConfig {
             "  gun_reload_staged           分段换弹（tick）",
             "  gun_auto_reload             自动换弹（1=启用）",
             "  gun_reload_interruptible    换弹可中断（1=允许）",
+            "  gun_dry_fire_sound          空仓击发音效（Bukkit Sound枚举名 如BLOCK_LEVER_CLICK）",
+            "  gun_reload_sound            换弹音效（Bukkit Sound枚举名 如BLOCK_PISTON_EXTEND）",
+            "  gun_shoot_sound             射击音效（Bukkit Sound枚举名 如ENTITY_GENERIC_EXPLODE）",
             "",
             "--- 枪膛系统 ---",
             "  gun_chamber_enabled                 枪膛开关（1=启用）",
@@ -280,9 +344,9 @@ public class GunItemConfig {
             "  gun_crossbow_damage          弩伤害",
             "  gun_crossbow_reload_ticks    弩装填（tick）",
             "  gun_crossbow_gravity         弩重力等级",
-            "  gun_crossbow_bleed_chance    流血概率（%）",
-            "  gun_crossbow_bleed_damage    流血伤害",
-            "  gun_crossbow_bleed_ticks     流血持续（tick）",
+            "  bleed_chance                 流血概率（%，通用）",
+            "  bleed_damage                 流血伤害（HP/tick，通用）",
+            "  bleed_ticks                  流血持续（tick，通用）",
             "  gun_crossbow_headshot_mult   弩爆头倍率（%）",
             "",
             "--- 特殊武器：喷火器 ---",
@@ -327,6 +391,74 @@ public class GunItemConfig {
             "  gun_laser_thickness          激光粗细",
             "  gun_laser_pierce             穿透实体（1=可穿透）",
             "",
+            "--- 人体工学 ---",
+            "  gun_equip_time_ticks         切枪掏出耗时（tick）",
+            "  gun_holster_time_ticks       收枪耗时（tick）",
+            "  gun_sprint_to_fire_ticks     疾跑→可开火延迟（tick）",
+            "  gun_ads_in_time_ticks        开镜渐入时间（tick）",
+            "  gun_ads_out_time_ticks       关镜渐出时间（tick）",
+            "  gun_weapon_swap_speed        切枪速度（100=正常）",
+            "",
+            "--- 机动性 ---",
+            "  gun_move_speed               持枪移速（100=正常）",
+            "  gun_sprint_speed             持枪疾跑速度",
+            "  gun_ads_move_speed           开镜移速",
+            "  gun_jump_height              持枪跳跃高度",
+            "  gun_can_sprint               允许疾跑（1=允许 0=禁止）",
+            "",
+            "--- 开镜高级属性 ---",
+            "  gun_ads_sensitivity          开镜灵敏度",
+            "  gun_ads_fov                  开镜视场",
+            "  gun_ads_sway_amount          开镜晃动（%越大散布越大）",
+             "  gun_ads_breath_max           呼吸值上限（默认100）",
+             "  gun_ads_breath_drain         屏息消耗/tick",
+             "  gun_ads_breath_regen         呼吸恢复/tick",
+             "  gun_ads_breath_threshold     屏息最低阈值（%），低于%×max自动停屏息",
+             "  gun_ads_night_vision         开镜夜视（1=开启）",
+            "  gun_ads_scope_type           瞄具类型（0=机瞄 1=红点 2=全息 3=四倍 4=高倍 5=热成像）",
+            "",
+            "--- 命中特效 ---",
+            "  gun_hit_slow_chance          命中减速概率（%）",
+            "  gun_hit_slow_amount          减速幅度（%）",
+            "  gun_hit_slow_ticks           减速持续（tick）",
+            "  gun_hit_stagger_chance       命中硬直概率（%）",
+            "  gun_hit_stagger_strength     硬直击退力度",
+            "  gun_hit_blind_chance         命中致盲概率（%）",
+            "  gun_hit_blind_ticks          致盲持续（tick）",
+            "",
+            "--- 击杀连锁 ---",
+            "  gun_on_kill_reload_speed     击杀后换弹加速（%）",
+            "  gun_on_kill_damage_bonus     击杀后伤害加成（%）",
+            "  gun_on_kill_heal             击杀回复生命",
+            "  gun_on_kill_buff_ticks       击杀buff持续（tick）",
+            "",
+            "--- 弹道高级特性 ---",
+            "  gun_bullet_ricochet_chance   跳弹概率（%）",
+            "  gun_bullet_ricochet_angle    跳弹触发最大入射角（度）",
+            "  gun_bullet_water_speed       水中弹速（100=正常）",
+            "  gun_bullet_glass_pierce      玻璃穿透（1=穿透）",
+            "",
+            "--- 视觉/音效 ---",
+            "  gun_muzzle_flash_intensity   枪口火焰强度（1-5）",
+            "  gun_muzzle_flash_color       焰色（RGB整数）",
+            "  gun_shell_eject              抛壳（1=开启）",
+            "  gun_shell_material           弹壳材质（Material名称）",
+            "  gun_hit_marker_type          命中标记（0=默认 1=十字 2=圆圈 3=菱形）",
+            "  gun_hit_marker_kill          击杀标记（0=默认 1=特殊音效 2=粒子）",
+            "  gun_inspect_ticks            检视时长（tick）",
+            "",
+            "--- 压制系统 ---",
+            "  gun_suppress_radius          压制范围（格）",
+            "  gun_suppress_amount          压制强度（%），被压制方散布/后坐增幅",
+            "  gun_suppress_duration_ticks  压制持续（tick）",
+            "",
+            "--- 耐久补充 ---",
+            "  gun_dura_repair_cost         修理成本（材料数量）",
+            "  gun_dura_repair_material     修理材料ID（Material名称）",
+            "",
+            "--- 配件槽位 ---",
+            "  gun_attachment_slots         可用槽位bitmask（muzzle=1 optic=2 grip=4 mag=8 stock=16 laser=32 trigger=64）",
+            "",
             "========================================================================",
             "                          属 性 扩 展 链",
             "========================================================================",
@@ -350,6 +482,7 @@ public class GunItemConfig {
         dc.set("enabled", DEFAULT_ENABLED);
 
         // ===== 手枪（IRON_HOE）=====
+        dc.set("items.IRON_HOE.gun_id", "pistol");
         dc.set("items.IRON_HOE.gun_damage", "15~25");
         dc.set("items.IRON_HOE.gun_bonus", "30~50%");
         dc.set("items.IRON_HOE.gun_rpm", 300);
@@ -402,6 +535,7 @@ public class GunItemConfig {
         dc.set("items.IRON_HOE.gun_auto_trigger_delay_ms", 0);
 
         // ===== 步枪（DIAMOND_HOE）=====
+        dc.set("items.DIAMOND_HOE.gun_id", "rifle");
         dc.set("items.DIAMOND_HOE.gun_damage", "30~45");
         dc.set("items.DIAMOND_HOE.gun_bonus", "50~80%");
         dc.set("items.DIAMOND_HOE.gun_rpm", 600);
@@ -454,6 +588,7 @@ public class GunItemConfig {
         dc.set("items.DIAMOND_HOE.gun_auto_trigger_delay_ms", 0);
 
         // ===== 狙击枪（NETHERITE_HOE）=====
+        dc.set("items.NETHERITE_HOE.gun_id", "sniper");
         dc.set("items.NETHERITE_HOE.gun_damage", "60~90");
         dc.set("items.NETHERITE_HOE.gun_bonus", "20~30%");
         dc.set("items.NETHERITE_HOE.gun_rpm", 60);
@@ -508,10 +643,16 @@ public class GunItemConfig {
         /* ---- 口径与武器类型 ---- */
         dc.set("items.IRON_HOE.caliber", "9mm");
         dc.set("items.IRON_HOE.default_ammo", "fmj");
+        dc.set("items.IRON_HOE.gun_dry_fire_sound", "BLOCK_LEVER_CLICK");
+        dc.set("items.IRON_HOE.gun_reload_sound", "BLOCK_PISTON_EXTEND");
         dc.set("items.DIAMOND_HOE.caliber", "5.56mm");
         dc.set("items.DIAMOND_HOE.default_ammo", "fmj");
+        dc.set("items.DIAMOND_HOE.gun_dry_fire_sound", "BLOCK_LEVER_CLICK");
+        dc.set("items.DIAMOND_HOE.gun_reload_sound", "BLOCK_PISTON_EXTEND");
         dc.set("items.NETHERITE_HOE.caliber", ".338lapua");
         dc.set("items.NETHERITE_HOE.default_ammo", "ap");
+        dc.set("items.NETHERITE_HOE.gun_dry_fire_sound", "BLOCK_LEVER_CLICK");
+        dc.set("items.NETHERITE_HOE.gun_reload_sound", "BLOCK_PISTON_EXTEND");
 
         /* ---- 弹夹系统 ---- */
         dc.set("items.IRON_HOE.gun_mag_capacity", 15);
@@ -529,6 +670,20 @@ public class GunItemConfig {
         /* 枪膛 (狙击枪启用) */
         dc.set("items.NETHERITE_HOE.gun_chamber_enabled", 1);
         dc.set("items.NETHERITE_HOE.gun_chamber_bolt_time_ticks", 20);
+
+        /* ---- 呼吸/屏息 (开镜时自动屏息) ---- */
+        dc.set("items.IRON_HOE.gun_ads_breath_max", 100);
+        dc.set("items.IRON_HOE.gun_ads_breath_drain", 0.3);
+        dc.set("items.IRON_HOE.gun_ads_breath_regen", 0.8);
+        dc.set("items.IRON_HOE.gun_ads_breath_threshold", 30);
+        dc.set("items.DIAMOND_HOE.gun_ads_breath_max", 100);
+        dc.set("items.DIAMOND_HOE.gun_ads_breath_drain", 0.4);
+        dc.set("items.DIAMOND_HOE.gun_ads_breath_regen", 0.6);
+        dc.set("items.DIAMOND_HOE.gun_ads_breath_threshold", 35);
+        dc.set("items.NETHERITE_HOE.gun_ads_breath_max", 100);
+        dc.set("items.NETHERITE_HOE.gun_ads_breath_drain", 0.5);
+        dc.set("items.NETHERITE_HOE.gun_ads_breath_regen", 0.5);
+        dc.set("items.NETHERITE_HOE.gun_ads_breath_threshold", 40);
 
         /* ---- 弹道系统 ---- */
         dc.set("items.IRON_HOE.gun_bullet_speed", 60);
@@ -567,6 +722,109 @@ public class GunItemConfig {
         dc.set("items.NETHERITE_HOE.gun_dura_max", 300);
         dc.set("items.NETHERITE_HOE.gun_dura_loss_per_shot", 2);
 
+        /* ---- 人体工学 ---- */
+        dc.set("items.IRON_HOE.gun_equip_time_ticks", 6);
+        dc.set("items.IRON_HOE.gun_holster_time_ticks", 4);
+        dc.set("items.IRON_HOE.gun_sprint_to_fire_ticks", 8);
+        dc.set("items.IRON_HOE.gun_ads_in_time_ticks", 5);
+        dc.set("items.IRON_HOE.gun_ads_out_time_ticks", 3);
+        dc.set("items.IRON_HOE.gun_weapon_swap_speed", 100);
+        dc.set("items.DIAMOND_HOE.gun_equip_time_ticks", 8);
+        dc.set("items.DIAMOND_HOE.gun_holster_time_ticks", 6);
+        dc.set("items.DIAMOND_HOE.gun_sprint_to_fire_ticks", 10);
+        dc.set("items.DIAMOND_HOE.gun_ads_in_time_ticks", 7);
+        dc.set("items.DIAMOND_HOE.gun_ads_out_time_ticks", 4);
+        dc.set("items.DIAMOND_HOE.gun_weapon_swap_speed", 85);
+        dc.set("items.NETHERITE_HOE.gun_equip_time_ticks", 12);
+        dc.set("items.NETHERITE_HOE.gun_holster_time_ticks", 8);
+        dc.set("items.NETHERITE_HOE.gun_sprint_to_fire_ticks", 14);
+        dc.set("items.NETHERITE_HOE.gun_ads_in_time_ticks", 10);
+        dc.set("items.NETHERITE_HOE.gun_ads_out_time_ticks", 6);
+        dc.set("items.NETHERITE_HOE.gun_weapon_swap_speed", 70);
+
+        /* ---- 机动性 ---- */
+        dc.set("items.IRON_HOE.gun_move_speed", 90);
+        dc.set("items.IRON_HOE.gun_sprint_speed", 100);
+        dc.set("items.IRON_HOE.gun_ads_move_speed", 60);
+        dc.set("items.IRON_HOE.gun_jump_height", 100);
+        dc.set("items.IRON_HOE.gun_can_sprint", 1);
+        dc.set("items.DIAMOND_HOE.gun_move_speed", 85);
+        dc.set("items.DIAMOND_HOE.gun_sprint_speed", 100);
+        dc.set("items.DIAMOND_HOE.gun_ads_move_speed", 50);
+        dc.set("items.DIAMOND_HOE.gun_jump_height", 100);
+        dc.set("items.DIAMOND_HOE.gun_can_sprint", 1);
+        dc.set("items.NETHERITE_HOE.gun_move_speed", 65);
+        dc.set("items.NETHERITE_HOE.gun_sprint_speed", 90);
+        dc.set("items.NETHERITE_HOE.gun_ads_move_speed", 35);
+        dc.set("items.NETHERITE_HOE.gun_jump_height", 85);
+        dc.set("items.NETHERITE_HOE.gun_can_sprint", 0);
+
+        /* ---- 开镜高级 ---- */
+        dc.set("items.IRON_HOE.gun_ads_sensitivity", 70);
+        dc.set("items.IRON_HOE.gun_ads_fov", 80);
+        dc.set("items.IRON_HOE.gun_ads_sway_amount", 1.5);
+        dc.set("items.IRON_HOE.gun_ads_night_vision", 0);
+        dc.set("items.IRON_HOE.gun_ads_scope_type", 1);
+        dc.set("items.DIAMOND_HOE.gun_ads_sensitivity", 60);
+        dc.set("items.DIAMOND_HOE.gun_ads_fov", 70);
+        dc.set("items.DIAMOND_HOE.gun_ads_sway_amount", 2.5);
+        dc.set("items.DIAMOND_HOE.gun_ads_night_vision", 0);
+        dc.set("items.DIAMOND_HOE.gun_ads_scope_type", 1);
+        dc.set("items.NETHERITE_HOE.gun_ads_sensitivity", 40);
+        dc.set("items.NETHERITE_HOE.gun_ads_fov", 50);
+        dc.set("items.NETHERITE_HOE.gun_ads_sway_amount", 5.0);
+        dc.set("items.NETHERITE_HOE.gun_ads_night_vision", 0);
+        dc.set("items.NETHERITE_HOE.gun_ads_scope_type", 4);
+
+        /* ---- 命中特效 ---- */
+        dc.set("items.NETHERITE_HOE.gun_hit_slow_chance", 50);
+        dc.set("items.NETHERITE_HOE.gun_hit_slow_amount", 40);
+        dc.set("items.NETHERITE_HOE.gun_hit_slow_ticks", 40);
+        dc.set("items.NETHERITE_HOE.gun_hit_stagger_chance", 30);
+        dc.set("items.NETHERITE_HOE.gun_hit_stagger_strength", 1.5);
+        dc.set("items.NETHERITE_HOE.gun_hit_blind_chance", 10);
+        dc.set("items.NETHERITE_HOE.gun_hit_blind_ticks", 40);
+
+        /* ---- 击杀连锁 ---- */
+        dc.set("items.NETHERITE_HOE.gun_on_kill_reload_speed", 30);
+        dc.set("items.NETHERITE_HOE.gun_on_kill_damage_bonus", 20);
+        dc.set("items.NETHERITE_HOE.gun_on_kill_heal", 2);
+        dc.set("items.NETHERITE_HOE.gun_on_kill_buff_ticks", 120);
+
+        /* ---- 弹道高级 ---- */
+        dc.set("items.NETHERITE_HOE.gun_bullet_ricochet_chance", 10);
+        dc.set("items.NETHERITE_HOE.gun_bullet_ricochet_angle", 60);
+        dc.set("items.NETHERITE_HOE.gun_bullet_water_speed", 70);
+        dc.set("items.NETHERITE_HOE.gun_bullet_glass_pierce", 1);
+
+        /* ---- 视觉/音效 ---- */
+        dc.set("items.IRON_HOE.gun_muzzle_flash_intensity", 2);
+        dc.set("items.IRON_HOE.gun_muzzle_flash_color", 16744448);
+        dc.set("items.IRON_HOE.gun_shell_eject", 1);
+        dc.set("items.IRON_HOE.gun_shell_material", "GOLD_NUGGET");
+        dc.set("items.DIAMOND_HOE.gun_muzzle_flash_intensity", 3);
+        dc.set("items.DIAMOND_HOE.gun_muzzle_flash_color", 16744448);
+        dc.set("items.DIAMOND_HOE.gun_shell_eject", 1);
+        dc.set("items.DIAMOND_HOE.gun_shell_material", "GOLD_NUGGET");
+        dc.set("items.NETHERITE_HOE.gun_muzzle_flash_intensity", 5);
+        dc.set("items.NETHERITE_HOE.gun_muzzle_flash_color", 16744448);
+        dc.set("items.NETHERITE_HOE.gun_shell_eject", 1);
+        dc.set("items.NETHERITE_HOE.gun_shell_material", "IRON_NUGGET");
+
+        /* ---- 压制系统 ---- */
+        dc.set("items.NETHERITE_HOE.gun_suppress_radius", 15);
+        dc.set("items.NETHERITE_HOE.gun_suppress_amount", 40);
+        dc.set("items.NETHERITE_HOE.gun_suppress_duration_ticks", 60);
+
+        /* ---- 耐久补充 ---- */
+        dc.set("items.NETHERITE_HOE.gun_dura_repair_cost", 3);
+        dc.set("items.NETHERITE_HOE.gun_dura_repair_material", "IRON_INGOT");
+
+        /* ---- 配件槽位 ---- */
+        dc.set("items.IRON_HOE.gun_attachment_slots", 11);    // muzzle(1)+optic(2)+mag(8) = 11
+        dc.set("items.DIAMOND_HOE.gun_attachment_slots", 63); // 6 slots
+        dc.set("items.NETHERITE_HOE.gun_attachment_slots", 127); // all 7 slots
+
         /* ==================== 全局系统开关 ==================== */
         dc.set("systems.overheat.enabled", false);
         dc.set("systems.overheat.global_cool_rate", 10.0);
@@ -585,6 +843,20 @@ public class GunItemConfig {
         dc.set("systems.penetration.enabled", false);
         dc.set("systems.ballistics.enabled", true);
         dc.set("systems.special_weapons.enabled", false);
+
+        /* ==================== 弹匣预设 ==================== */
+        dc.set("magazines.glock_17.display_name", "Glock 17 弹匣");
+        dc.set("magazines.glock_17.caliber", "9mm");
+        dc.set("magazines.glock_17.capacity", 17);
+        dc.set("magazines.glock_17.item_material", "IRON_INGOT");
+        dc.set("magazines.stanag_30.display_name", "STANAG 30发 弹匣");
+        dc.set("magazines.stanag_30.caliber", "5.56mm");
+        dc.set("magazines.stanag_30.capacity", 30);
+        dc.set("magazines.stanag_30.item_material", "IRON_INGOT");
+        dc.set("magazines.ai_5.display_name", "AI 5发 弹匣");
+        dc.set("magazines.ai_5.caliber", ".338lapua");
+        dc.set("magazines.ai_5.capacity", 5);
+        dc.set("magazines.ai_5.item_material", "IRON_INGOT");
 
         try {
             dc.save(file);
@@ -628,6 +900,101 @@ public class GunItemConfig {
     /** 获取枪械的默认弹种ID，可能为null */
     public String getDefaultAmmo(Material material) { return defaultAmmoMap.get(material); }
 
+    /** 获取枪械的空仓击发音效（Bukkit Sound 名称），null=使用默认 */
+    public String getDryFireSound(Material material) { return dryFireSoundMap.get(material); }
+
+    /** 获取枪械的换弹音效（Bukkit Sound 名称），null=使用默认 */
+    public String getReloadSound(Material material) { return reloadSoundMap.get(material); }
+
+    /** 获取枪械的射击音效（Bukkit Sound 名称），null=使用默认 ENTITY_GENERIC_EXPLODE */
+    public String getShootSound(Material material) { return shootSoundMap.get(material); }
+
+    /** gun_id → Material */
+    public Material getMaterialByGunId(String gunId) { return gunIdToMaterial.get(gunId.toLowerCase()); }
+    /** Material → gun_id */
+    public String getGunId(Material material) { return materialToGunId.get(material); }
+    /** 获取所有已注册的 gun_id */
+    public Set<String> getAllGunIds() { return Collections.unmodifiableSet(gunIdToMaterial.keySet()); }
+
+    /** 弹匣配置 */
+    public MagazineDef getMagazineDef(String magId) { return magazineMap.get(magId); }
+    /** 全部弹匣ID */
+    public Set<String> getAllMagazineIds() { return Collections.unmodifiableSet(magazineMap.keySet()); }
+
+    /** 根据 mag_id 创建弹匣 ItemStack */
+    public ItemStack createMagazineItem(String magId) {
+        MagazineDef def = magazineMap.get(magId);
+        if (def == null) return null;
+        Material mat = Material.getMaterial(def.itemMaterial);
+        if (mat == null) mat = Material.IRON_INGOT;
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return item;
+
+        meta.displayName(Component.text("§b" + def.displayName));
+        // PDC
+        meta.getPersistentDataContainer().set(new NamespacedKey("xh", "magazine_id"), PersistentDataType.STRING, magId);
+        meta.getPersistentDataContainer().set(new NamespacedKey("xh", "mag_caliber"), PersistentDataType.STRING, def.caliber);
+        meta.getPersistentDataContainer().set(new NamespacedKey("xh", "mag_capacity"), PersistentDataType.INTEGER, def.capacity);
+        meta.getPersistentDataContainer().set(new NamespacedKey("xh", "mag_ammo"), PersistentDataType.INTEGER, 0); // 空弹匣
+        if (def.itemCustomModelData > 0) meta.setCustomModelData(def.itemCustomModelData);
+
+        List<Component> lore = new ArrayList<>();
+        lore.add(Component.text("§7口径: " + def.caliber));
+        lore.add(Component.text("§7容量: " + def.capacity + "发"));
+        lore.add(Component.text("§7右键打开 → 装弹"));
+        meta.lore(lore);
+
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /** 根据 gun_id 创建枪械 ItemStack，属性从 gun.yml 写入 PDC */
+    public ItemStack createGunItem(String gunId) {
+        Material mat = gunIdToMaterial.get(gunId.toLowerCase());
+        if (mat == null) return null;
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return item;
+
+        // gun_id PDC
+        meta.getPersistentDataContainer().set(new NamespacedKey("xh", "gun_id"), PersistentDataType.STRING, gunId.toLowerCase());
+
+        // 写入 gun.yml 全部属性到 PDC
+        Map<RpgAttribute, AttributeRange> attrs = materialTemplates.get(mat);
+        if (attrs != null) {
+            for (Map.Entry<RpgAttribute, AttributeRange> e : attrs.entrySet()) {
+                AttributeRange range = e.getValue();
+                if (range.getMin() != e.getKey().getDefaultValue() || range.getMax() != e.getKey().getDefaultValue()) {
+                    meta.getPersistentDataContainer().set(
+                        new NamespacedKey("xh", "item." + e.getKey().getKey() + "_min"),
+                        PersistentDataType.DOUBLE, range.getMin());
+                    meta.getPersistentDataContainer().set(
+                        new NamespacedKey("xh", "item." + e.getKey().getKey() + "_max"),
+                        PersistentDataType.DOUBLE, range.getMax());
+                }
+            }
+        }
+        // 字符串属性
+        String caliber = caliberMap.get(mat);
+        if (caliber != null) meta.getPersistentDataContainer().set(new NamespacedKey("xh", "ammo_caliber"), PersistentDataType.STRING, caliber);
+        String weaponType = weaponTypeMap.get(mat);
+        if (weaponType != null) meta.getPersistentDataContainer().set(new NamespacedKey("xh", "gun_weapon_type"), PersistentDataType.STRING, weaponType);
+        String defaultAmmo = defaultAmmoMap.get(mat);
+        if (defaultAmmo != null) meta.getPersistentDataContainer().set(new NamespacedKey("xh", "ammo_type"), PersistentDataType.STRING, defaultAmmo);
+
+        // 显示名
+        String displayName = gunIdToMaterial.containsKey(gunId.toLowerCase()) ? "§6" + gunId : mat.name();
+        meta.displayName(Component.text(displayName));
+
+        item.setItemMeta(meta);
+
+        // 初始化弹匣容量
+        double cap = AttributeStorage.getAttrValue(item, RpgAttribute.GUN_MAG_CAPACITY);
+        MagazineManager.setAmmo(item, (int) cap);
+        return item;
+    }
+
     /** 获取全局系统配置节点 */
     public ConfigurationSection getSystemsSection() { return systemsSection; }
 
@@ -638,4 +1005,14 @@ public class GunItemConfig {
     }
 
     public void reload() { loadConfig(); }
+
+    /** 弹匣模板定义 */
+    public static class MagazineDef {
+        public String id;
+        public String displayName;
+        public String caliber;
+        public int capacity;
+        public String itemMaterial;
+        public int itemCustomModelData;
+    }
 }

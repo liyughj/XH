@@ -28,11 +28,18 @@ public class MalfunctionManager {
 
     public static class MalfunctionState {
         boolean jamActive;       // 是否卡壳中
+        boolean jamClearing;     // 是否正在排除卡壳（拒绝重复左键）
         long lastMalfuncTick;    // 上次故障的世界tick（冷却用）
     }
 
     private static MalfunctionState getState(Player player) {
         return states.computeIfAbsent(player.getUniqueId(), k -> new MalfunctionState());
+    }
+
+    /** 是否正在排除卡壳（排障动作进行中，仍禁止射击） */
+    public static boolean isJamClearing(Player player) {
+        MalfunctionState state = states.get(player.getUniqueId());
+        return state != null && state.jamClearing;
     }
 
     /**
@@ -44,8 +51,8 @@ public class MalfunctionManager {
 
         MalfunctionState state = getState(player);
 
-        // 卡壳持续
-        if (state.jamActive) return MalfuncType.JAM;
+        // 卡壳持续 / 排障中
+        if (state.jamActive || state.jamClearing) return MalfuncType.JAM;
 
         // 故障冷却
         long now = player.getWorld().getGameTime();
@@ -99,8 +106,13 @@ public class MalfunctionManager {
         }
         chance += globalBase;
 
-        // 热量加成
+        // 热量加成（过热系统的因子 + 故障系统自身的因子 叠加）
         chance += OverheatManager.getMalfunctionBonus(player, weapon);
+        double malfuncHeatFactor = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_MALFUNC_HEAT_FACTOR);
+        if (malfuncHeatFactor > 0) {
+            double heatPct = OverheatManager.getHeatPercent(player, weapon);
+            chance += heatPct * (malfuncHeatFactor / 100.0);
+        }
 
         // 耐久加成（使用两个独立因子叠加）
         double duraPct = DurabilityManager.getDurabilityPercent(player, weapon);
@@ -139,6 +151,24 @@ public class MalfunctionManager {
         MalfunctionState state = states.get(player.getUniqueId());
         if (state != null) {
             state.jamActive = false;
+            state.jamClearing = false;
+        }
+    }
+
+    /** 开始排障动作（左键），返回 true=成功进入排障状态 */
+    public static boolean startJamClear(Player player) {
+        MalfunctionState state = states.get(player.getUniqueId());
+        if (state == null || !state.jamActive || state.jamClearing) return false;
+        state.jamClearing = true;
+        return true;
+    }
+
+    /** 排障完成，清除卡壳标记 */
+    public static void finishJamClear(Player player) {
+        MalfunctionState state = states.get(player.getUniqueId());
+        if (state != null) {
+            state.jamActive = false;
+            state.jamClearing = false;
         }
     }
 

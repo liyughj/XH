@@ -166,7 +166,7 @@ public enum RpgAttribute {
     GUN_RECOIL_ADS("gun_recoil_ads", "后坐开镜修正", ValueType.PERCENT, 0.0, 100.0, 50.0, Category.GUN),
     /** 后坐模式：0=直线 1=锯齿 2=S线 3=倒T */
     GUN_RECOIL_PATTERN("gun_recoil_pattern", "后坐模式", ValueType.FLAT, 0.0, 3.0, 0.0, Category.GUN),
-    /** 视角震动（度），额外随机抖动量，只影响视觉不影响弹道 */
+    /** 视角震动（度），额外随机抖动量，影响瞄准方向偏移 */
     GUN_RECOIL_VIEW_KICK("gun_recoil_view_kick", "视角震动", ValueType.FLAT, 0.0, 45.0, 0.0, Category.GUN),
 
     /* --- 爆头/部位伤害 --- */
@@ -315,6 +315,8 @@ public enum RpgAttribute {
     GUN_BULLET_DAMAGE_MIN_PERCENT("gun_bullet_damage_min_percent", "最低伤害保留", ValueType.PERCENT, 0.0, 100.0, 50.0, Category.GUN),
     /** Hitscan模式，1=射线检测(无弹道) 0=Projectile */
     GUN_BULLET_HITSCAN("gun_bullet_hitscan", "射线模式", ValueType.FLAT, 0.0, 1.0, 0.0, Category.GUN),
+    /** 弹道尾迹粒子: "smoke"/"flame"/"crit"/""=关闭 */
+    GUN_BULLET_TRAIL("gun_bullet_trail", "弹道尾迹", ValueType.FLAT, 0.0, 4.0, 0.0, Category.GUN), // 编码: 0=off 1=smoke 2=flame 3=crit 4=end_rod
     /** 弹道粒子间隔（tick），每N tick产生一个尾迹粒子 */
     GUN_BULLET_TRAIL_INTERVAL("gun_bullet_trail_interval", "粒子间隔", ValueType.FLAT, 0.0, Double.MAX_VALUE, 3.0, Category.GUN),
 
@@ -336,12 +338,14 @@ public enum RpgAttribute {
     GUN_CROSSBOW_RELOAD_TICKS("gun_crossbow_reload_ticks", "弩装填", ValueType.FLAT, 0.0, Double.MAX_VALUE, 60.0, Category.GUN),
     /** 弩重力等级：0=直线 1=弱 2=标准 */
     GUN_CROSSBOW_GRAVITY("gun_crossbow_gravity", "弩重力", ValueType.FLAT, 0.0, 2.0, 2.0, Category.GUN),
+
+    /* ── 通用流血 ── */
     /** 流血概率（%），命中后触发流血DoT的概率 */
-    GUN_CROSSBOW_BLEED_CHANCE("gun_crossbow_bleed_chance", "弩流血概率", ValueType.PERCENT, 0.0, 100.0, 30.0, Category.GUN),
+    BLEED_CHANCE("bleed_chance", "流血概率", ValueType.PERCENT, 0.0, 100.0, 0.0, Category.ORIGINAL_RPG),
     /** 流血伤害（HP/tick） */
-    GUN_CROSSBOW_BLEED_DAMAGE("gun_crossbow_bleed_damage", "弩流血伤害", ValueType.FLAT, 0.0, Double.MAX_VALUE, 2.0, Category.GUN),
+    BLEED_DAMAGE("bleed_damage", "流血伤害", ValueType.FLAT, 0.0, Double.MAX_VALUE, 0.0, Category.ORIGINAL_RPG),
     /** 流血持续（tick） */
-    GUN_CROSSBOW_BLEED_TICKS("gun_crossbow_bleed_ticks", "弩流血持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 60.0, Category.GUN),
+    BLEED_TICKS("bleed_ticks", "流血持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 0.0, Category.ORIGINAL_RPG),
     /** 弩爆头倍率（%），覆盖通用爆头倍率 */
     GUN_CROSSBOW_HEADSHOT_MULT("gun_crossbow_headshot_mult", "弩爆头倍率", ValueType.PERCENT, 0.0, 1000.0, 250.0, Category.GUN),
 
@@ -420,6 +424,122 @@ public enum RpgAttribute {
     GUN_LASER_THICKNESS("gun_laser_thickness", "激光粗细", ValueType.FLAT, 1.0, 10.0, 1.0, Category.GUN),
     /** 激光穿透，1=可穿透实体（不受gun_penetration影响） 0=正常 */
     GUN_LASER_PIERCE("gun_laser_pierce", "激光穿透", ValueType.FLAT, 0.0, 1.0, 1.0, Category.GUN),
+
+    /* ── 人体工学 ── */
+    /** 切枪/掏出武器耗时（tick） */
+    GUN_EQUIP_TIME_TICKS("gun_equip_time_ticks", "切枪耗时", ValueType.FLAT, 0.0, Double.MAX_VALUE, 10.0, Category.GUN),
+    /** 收枪耗时（tick），切换为其他物品的延迟 */
+    GUN_HOLSTER_TIME_TICKS("gun_holster_time_ticks", "收枪耗时", ValueType.FLAT, 0.0, Double.MAX_VALUE, 5.0, Category.GUN),
+    /** 疾跑→开火延迟（tick），冲刺后多久才能射击 */
+    GUN_SPRINT_TO_FIRE_TICKS("gun_sprint_to_fire_ticks", "疾跑开火延迟", ValueType.FLAT, 0.0, Double.MAX_VALUE, 6.0, Category.GUN),
+    /** 开镜渐入耗时（tick），0=瞬间进入 */
+    GUN_ADS_IN_TIME_TICKS("gun_ads_in_time_ticks", "开镜渐入", ValueType.FLAT, 0.0, 60.0, 5.0, Category.GUN),
+    /** 关镜渐出耗时（tick），0=瞬间退出 */
+    GUN_ADS_OUT_TIME_TICKS("gun_ads_out_time_ticks", "关镜渐出", ValueType.FLAT, 0.0, 60.0, 3.0, Category.GUN),
+    /** 切换到此枪的速度倍率（100=正常，50=慢一倍） */
+    GUN_WEAPON_SWAP_SPEED("gun_weapon_swap_speed", "切枪速度", ValueType.PERCENT, 10.0, 200.0, 100.0, Category.GUN),
+
+    /* ── 机动性 ── */
+    /** 持枪移速倍率（100=正常，80=慢20%） */
+    GUN_MOVE_SPEED("gun_move_speed", "持枪移速", ValueType.PERCENT, 10.0, 150.0, 100.0, Category.GUN),
+    /** 持枪疾跑倍率 */
+    GUN_SPRINT_SPEED("gun_sprint_speed", "持枪疾跑", ValueType.PERCENT, 10.0, 150.0, 100.0, Category.GUN),
+    /** 开镜移速倍率 */
+    GUN_ADS_MOVE_SPEED("gun_ads_move_speed", "开镜移速", ValueType.PERCENT, 5.0, 100.0, 50.0, Category.GUN),
+    /** 持枪跳跃高度修正（100=正常） */
+    GUN_JUMP_HEIGHT("gun_jump_height", "持枪跳跃", ValueType.PERCENT, 10.0, 200.0, 100.0, Category.GUN),
+    /** 持枪允许疾跑，1=允许 0=禁止 */
+    GUN_CAN_SPRINT("gun_can_sprint", "允许疾跑", ValueType.FLAT, 0.0, 1.0, 1.0, Category.GUN),
+
+    /* ── 开镜高级属性 ── */
+    /** 开镜灵敏度倍率（100=不变，50=减半） */
+    GUN_ADS_SENSITIVITY("gun_ads_sensitivity", "开镜灵敏度", ValueType.PERCENT, 10.0, 200.0, 70.0, Category.GUN),
+    /** 开镜 FOV 乘数（1.0=不变，0.5=放大2倍），服务端通过setRotation+pitch修正模拟 */
+    GUN_ADS_FOV("gun_ads_fov", "开镜视场", ValueType.PERCENT, 10.0, 100.0, 80.0, Category.GUN),
+    /** 开镜晃动幅度，值越大开镜时子弹散布越大，0=无晃动 */
+    GUN_ADS_SWAY_AMOUNT("gun_ads_sway_amount", "开镜晃动", ValueType.FLAT, 0.0, 10.0, 1.0, Category.GUN),
+    /** 呼吸值上限（开镜时屏息消耗至此值×阈值%停止），100=默认 */
+    GUN_ADS_BREATH_MAX("gun_ads_breath_max", "呼吸值上限", ValueType.FLAT, 10.0, 500.0, 100.0, Category.GUN),
+    /** 屏息消耗速率（/tick），开镜屏息时每tick扣减呼吸值 */
+    GUN_ADS_BREATH_DRAIN("gun_ads_breath_drain", "屏息消耗", ValueType.FLAT, 0.0, 10.0, 0.3, Category.GUN),
+    /** 呼吸恢复速率（/tick），不屏息时每tick恢复 */
+    GUN_ADS_BREATH_REGEN("gun_ads_breath_regen", "呼吸恢复", ValueType.FLAT, 0.0, 10.0, 0.8, Category.GUN),
+    /** 屏息最低阈值（%），呼吸值低于此%×max时自动停止屏息，恢复到此值以上重开镜默认屏息 */
+    GUN_ADS_BREATH_THRESHOLD("gun_ads_breath_threshold", "屏息阈值", ValueType.PERCENT, 0.0, 100.0, 30.0, Category.GUN),
+    /** 开镜夜视，1=开镜时给 night_vision 效果 0=无 */
+    GUN_ADS_NIGHT_VISION("gun_ads_night_vision", "开镜夜视", ValueType.FLAT, 0.0, 1.0, 0.0, Category.GUN),
+    /** 瞄具类型：0=无/机瞄 1=红点 2=全息 3=四倍 4=高倍 5=热成像(Glowing) */
+    GUN_ADS_SCOPE_TYPE("gun_ads_scope_type", "瞄具类型", ValueType.FLAT, 0.0, 5.0, 0.0, Category.GUN),
+
+    /* ── 命中特效 ── */
+    /** 命中减速概率（%） */
+    GUN_HIT_SLOW_CHANCE("gun_hit_slow_chance", "命中减速率", ValueType.PERCENT, 0.0, 100.0, 0.0, Category.GUN),
+    /** 减速幅度（%），减目标移速的百分比 */
+    GUN_HIT_SLOW_AMOUNT("gun_hit_slow_amount", "减速幅度", ValueType.PERCENT, 0.0, 100.0, 30.0, Category.GUN),
+    /** 减速持续（tick） */
+    GUN_HIT_SLOW_TICKS("gun_hit_slow_ticks", "减速持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 40.0, Category.GUN),
+    /** 命中硬直概率（%），击退目标 */
+    GUN_HIT_STAGGER_CHANCE("gun_hit_stagger_chance", "硬直概率", ValueType.PERCENT, 0.0, 100.0, 0.0, Category.GUN),
+    /** 硬直击退力度（0=无击退） */
+    GUN_HIT_STAGGER_STRENGTH("gun_hit_stagger_strength", "硬直力度", ValueType.FLAT, 0.0, 5.0, 1.0, Category.GUN),
+    /** 命中致盲概率（%），给目标 blindness 效果 */
+    GUN_HIT_BLIND_CHANCE("gun_hit_blind_chance", "致盲概率", ValueType.PERCENT, 0.0, 100.0, 0.0, Category.GUN),
+    /** 致盲持续（tick） */
+    GUN_HIT_BLIND_TICKS("gun_hit_blind_ticks", "致盲持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 60.0, Category.GUN),
+
+    /* ── 击杀连锁 ── */
+    /** 击杀后换弹加速（%），持续 N tick */
+    GUN_ON_KILL_RELOAD_SPEED("gun_on_kill_reload_speed", "击杀换弹加速", ValueType.PERCENT, 0.0, 500.0, 0.0, Category.GUN),
+    /** 击杀后伤害加成（%） */
+    GUN_ON_KILL_DAMAGE_BONUS("gun_on_kill_damage_bonus", "击杀伤害加成", ValueType.PERCENT, 0.0, 500.0, 0.0, Category.GUN),
+    /** 击杀回复生命（绝对值） */
+    GUN_ON_KILL_HEAL("gun_on_kill_heal", "击杀回复", ValueType.FLAT, 0.0, Double.MAX_VALUE, 0.0, Category.GUN),
+    /** 击杀 buff 持续时间（tick） */
+    GUN_ON_KILL_BUFF_TICKS("gun_on_kill_buff_ticks", "击杀buff持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 100.0, Category.GUN),
+
+    /* ── 弹道高级特性 ── */
+    /** 跳弹概率（%），入射角≤阈值时触发 */
+    GUN_BULLET_RICOCHET_CHANCE("gun_bullet_ricochet_chance", "跳弹概率", ValueType.PERCENT, 0.0, 100.0, 0.0, Category.GUN),
+    /** 跳弹触发最大入射角（度），弹道与面法线夹角≤此值才可能跳弹 */
+    GUN_BULLET_RICOCHET_ANGLE("gun_bullet_ricochet_angle", "跳弹角度", ValueType.FLAT, 0.0, 90.0, 30.0, Category.GUN),
+    /** 水中弹速倍率（100=正常水速），水中子弹飞行速度系数 */
+    GUN_BULLET_WATER_SPEED("gun_bullet_water_speed", "水中弹速", ValueType.PERCENT, 1.0, 100.0, 40.0, Category.GUN),
+    /** 玻璃穿透，1=穿透玻璃类方块不消失 0=击碎停止 */
+    GUN_BULLET_GLASS_PIERCE("gun_bullet_glass_pierce", "玻璃穿透", ValueType.FLAT, 0.0, 1.0, 0.0, Category.GUN),
+
+    /* ── 视觉/音效 ── */
+    /** 枪口火焰强度（1-5），0=关闭 */
+    GUN_MUZZLE_FLASH_INTENSITY("gun_muzzle_flash_intensity", "枪口火焰", ValueType.FLAT, 0.0, 5.0, 1.0, Category.GUN),
+    /** 枪口火焰颜色（RGB整数，如 0xFF6600=橙焰） */
+    GUN_MUZZLE_FLASH_COLOR("gun_muzzle_flash_color", "焰色", ValueType.FLAT, 0.0, 16777215.0, 16744448.0, Category.GUN),
+    /** 抛壳开关，1=射击时抛弹壳 0=关 */
+    GUN_SHELL_EJECT("gun_shell_eject", "抛壳", ValueType.FLAT, 0.0, 1.0, 1.0, Category.GUN),
+    /** 弹壳材质（Material 名称，如 GOLD_NUGGET/IRON_NUGGET） */
+    GUN_SHELL_MATERIAL("gun_shell_material", "弹壳材质", ValueType.FLAT, 0.0, 10.0, 0.0, Category.GUN),
+    /** 命中标记：0=默认(红) 1=十字 2=圆圈 3=菱形 */
+    GUN_HIT_MARKER_TYPE("gun_hit_marker_type", "命中标记", ValueType.FLAT, 0.0, 3.0, 0.0, Category.GUN),
+    /** 击杀标记：0=默认 1=特殊击杀音效 2=击杀粒子 */
+    GUN_HIT_MARKER_KILL("gun_hit_marker_kill", "击杀标记", ValueType.FLAT, 0.0, 2.0, 0.0, Category.GUN),
+    /** 检视武器动画时长（tick），0=无检视 */
+    GUN_INSPECT_TICKS("gun_inspect_ticks", "检视时长", ValueType.FLAT, 0.0, Double.MAX_VALUE, 0.0, Category.GUN),
+
+    /* ── 压制系统 ── */
+    /** 压制范围（格），AOE 检测半径 */
+    GUN_SUPPRESS_RADIUS("gun_suppress_radius", "压制范围", ValueType.FLAT, 0.0, 50.0, 10.0, Category.GUN),
+    /** 压制强度（%），被压制者散布/后坐增加比例 */
+    GUN_SUPPRESS_AMOUNT("gun_suppress_amount", "压制强度", ValueType.PERCENT, 0.0, 500.0, 50.0, Category.GUN),
+    /** 压制持续（tick） */
+    GUN_SUPPRESS_DURATION_TICKS("gun_suppress_duration_ticks", "压制持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 80.0, Category.GUN),
+
+    /* ── 耐久补充 ── */
+    /** 修理所需材料数量 */
+    GUN_DURA_REPAIR_COST("gun_dura_repair_cost", "修理成本", ValueType.FLAT, 0.0, 64.0, 8.0, Category.GUN),
+    /** 修理材料 ID（Material 名称），如 IRON_INGOT */
+    GUN_DURA_REPAIR_MATERIAL("gun_dura_repair_material", "修理材料", ValueType.FLAT, 0.0, 12.0, 0.0, Category.GUN),
+
+    /* ── 配件槽位 ── */
+    /** 可用配件槽位 bitmask：bit0=muzzle bit1=optic bit2=grip bit3=mag bit4=stock bit5=laser bit6=trigger */
+    GUN_ATTACHMENT_SLOTS("gun_attachment_slots", "配件槽位", ValueType.FLAT, 0.0, 127.0, 127.0, Category.GUN),
 
     /* ==================== 魔法（预留） ==================== */
 

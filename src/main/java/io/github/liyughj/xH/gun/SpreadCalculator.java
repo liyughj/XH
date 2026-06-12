@@ -49,6 +49,9 @@ public final class SpreadCalculator {
         AmmoConfig.AmmoTypeDef ammo = MagazineManager.getCurrentAmmoType(weapon);
         if (ammo != null) spreadDeg *= ammo.spreadMult;
 
+        // 开镜晃动修正（屏息时降低）
+        spreadDeg *= AdsManager.getSwayMultiplier(player, weapon);
+
         if (spreadDeg <= 0.0) return baseDir.clone(); // 绝对精准
 
         /* —— 读取象限/偏向/模式 —— */

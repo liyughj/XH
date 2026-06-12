@@ -20,6 +20,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
@@ -67,8 +68,66 @@ public class GunListener implements Listener {
         Player player = event.getPlayer();
         FireModeManager.stopAuto(player);
         AdsManager.forceExit(player);
-        MagazineManager.cancelReload(player);
+        MagazineManager.cancelReloadIfInterruptible(player);
         MalfunctionManager.clearJam(player);
+
+        // 人体工学：收旧枪 + 切新枪延迟
+        ItemStack oldWeapon = player.getInventory().getItem(event.getPreviousSlot());
+        ItemStack newWeapon = player.getInventory().getItem(event.getNewSlot());
+
+        // 切枪拦截：上一把枪的收枪冷却未结束
+        if (isGun(newWeapon) && EquipManager.isHolsterBlocked(player)) {
+            event.setCancelled(true);
+            return;
+        }
+
+        if (isGun(oldWeapon)) {
+            EquipManager.markHolster(player, oldWeapon);
+            MobilityManager.restoreWeaponSpeed(player);
+        }
+        if (isGun(newWeapon)) {
+            EquipManager.markEquip(player, newWeapon);
+            MobilityManager.applyWeaponSpeed(player, newWeapon);
+        } else {
+            MobilityManager.restoreWeaponSpeed(player);
+        }
+    }
+
+    /** 疾跑切换 → 记录延迟 + 移速修正 */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onSprintToggle(PlayerToggleSprintEvent event) {
+        Player player = event.getPlayer();
+        if (event.isSprinting()) {
+            EquipManager.markSprintStart(player);
+        } else {
+            EquipManager.markSprintEnd(player);
+        }
+        ItemStack weapon = player.getInventory().getItemInMainHand();
+        if (isGun(weapon) && MobilityManager.isSprintBlocked(player)) {
+            event.setCancelled(true);
+            return;
+        }
+        // 刷新疾跑移速
+        MobilityManager.refreshSprintSpeed(player);
+    }
+
+    /** 跳跃 → 修正跳跃高度 */
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onPlayerJump(org.bukkit.event.player.PlayerMoveEvent event) {
+        if (!event.hasChangedPosition()) return;
+        Player player = event.getPlayer();
+        double deltaY = event.getTo().getY() - event.getFrom().getY();
+        if (deltaY <= 0.3) return; // 不是跳跃（正常移动/摔落）
+        ItemStack weapon = player.getInventory().getItemInMainHand();
+        if (!isGun(weapon)) return;
+
+        double mult = MobilityManager.getJumpMultiplier(player);
+        if (mult == 1.0) return;
+
+        // 跳跃高度修正：修正 Y 方向速度
+        var vel = player.getVelocity();
+        vel.setY(vel.getY() * mult);
+        player.setVelocity(vel);
     }
 
     /* ==================== 丢弃物品 (Q键) → 换弹 ==================== */
@@ -82,13 +141,11 @@ public class GunListener implements Listener {
         // 检查弹夹系统是否启用
         if (!GunSystemConfig.isSystemEnabled(player, "magazine")) return;
 
-        event.setCancelled(true); // 阻止丢弃
-
-        // 退出全自动
-        FireModeManager.stopAuto(player);
-
-        // 开始换弹
-        MagazineManager.startReload(player, weapon);
+        // 开始换弹（内部会停全自动+退开镜），只有成功才阻止丢弃（弹夹满时允许丢枪）
+        boolean started = MagazineManager.startReload(player, weapon);
+        if (started) {
+            event.setCancelled(true);
+        }
     }
 
     /* ==================== 射击 + 开镜 ==================== */
@@ -118,18 +175,17 @@ public class GunListener implements Listener {
         if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
             // 卡壳优先：左键排除
             if (MalfunctionManager.isJamActive(player)) {
-                MalfunctionManager.clearJam(player);
+                if (!MalfunctionManager.startJamClear(player)) return; // 已在排障中
                 double clearTicks = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_MALFUNC_JAM_CLEAR_TICKS);
-                if (clearTicks > 0) {
-                    player.playSound(player.getLocation(), Sound.BLOCK_CHAIN_PLACE, 0.4f, 1.8f);
-                    player.sendActionBar(Component.text("排除中...", NamedTextColor.GREEN));
-                    new org.bukkit.scheduler.BukkitRunnable() {
-                        @Override
-                        public void run() {
-                            player.sendActionBar(Component.text("卡壳已排除", NamedTextColor.GREEN));
-                        }
-                    }.runTaskLater(plugin, (long) clearTicks);
-                }
+                player.playSound(player.getLocation(), Sound.BLOCK_CHAIN_PLACE, 0.4f, 1.8f);
+                player.sendActionBar(Component.text("排除中...", NamedTextColor.GREEN));
+                new org.bukkit.scheduler.BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        MalfunctionManager.finishJamClear(player);
+                        player.sendActionBar(Component.text("卡壳已排除", NamedTextColor.GREEN));
+                    }
+                }.runTaskLater(plugin, Math.max(1, (long) clearTicks));
                 return;
             }
 
@@ -229,6 +285,22 @@ public class GunListener implements Listener {
             && !weaponType.equals("crossbow");
         boolean needsStandardCheck = !weaponType.equals("flamethrower") && !weaponType.equals("laser");
 
+        /* ── 切枪冷却检查 ── */
+        if (EquipManager.isEquipBlocked(player)) return;
+
+        /* ── 疾跑→开火延迟 ── */
+        int sprintDelay = EquipManager.getSprintToFireDelay(player, weapon);
+        if (sprintDelay > 0) {
+            player.sendActionBar(Component.text("疾跑惯性... " + sprintDelay + "tick", NamedTextColor.GRAY));
+            return;
+        }
+
+        /* ── 0. [弩冷却] 射击后装填冷却检查 ── */
+        if ("crossbow".equals(weaponType) && SpecialWeapons.isCrossbowOnCooldown(player, weapon)) {
+            player.sendActionBar(Component.text("装填中...", NamedTextColor.YELLOW));
+            return;
+        }
+
         /* ── 1. [弹夹/枪膛] 弹量检查（最先） ── */
         if (needsStandardCheck && GunSystemConfig.isSystemEnabled(player, "magazine")) {
             if (ChamberManager.isEnabled(weapon)) {
@@ -277,6 +349,9 @@ public class GunListener implements Listener {
             if (DurabilityManager.shootLoss(player, weapon)) return;
         }
 
+        /* ── 压制AOE ── */
+        if (needsStandardCheck) SuppressionManager.onShoot(player, weapon);
+
         /* ── 按武器类型发射 ── */
         switch (weaponType) {
             case "shotgun":
@@ -298,8 +373,34 @@ public class GunListener implements Listener {
 
     /** 空仓击发音效 */
     private void playDryFire(Player player, ItemStack weapon) {
-        // 播放空仓音效（默认 click）
-        player.playSound(player.getLocation(), Sound.BLOCK_LEVER_CLICK, 0.3f, 1.0f);
+        Sound sound = Sound.BLOCK_LEVER_CLICK; // 默认
+        String configured = GunSystemConfig.gun().getDryFireSound(weapon.getType());
+        if (configured != null) {
+            try { sound = org.bukkit.Registry.SOUNDS.get(NamespacedKey.minecraft(configured.toLowerCase())); }
+            catch (IllegalArgumentException ignored) { /* 无效Sound名，用默认 */ }
+            if (sound == null) sound = Sound.BLOCK_LEVER_CLICK;
+        }
+        player.playSound(player.getLocation(), sound, 0.3f, 1.0f);
+    }
+
+    /** 枪声音效 —— 世界级播放，实现听声辨位和距离衰减 */
+    private void playGunSound(Player player, ItemStack weapon) {
+        float volume = 2.0f;
+        float pitch = 2.0f;
+        // 弹药消音
+        AmmoConfig.AmmoTypeDef ammo = MagazineManager.getCurrentAmmoType(weapon);
+        if (ammo != null && ammo.getEffectBool("silent")) {
+            volume *= 0.3f; // 降低70%音量
+        }
+        // 枪械配置的射击音效
+        Sound sound = Sound.ENTITY_GENERIC_EXPLODE;
+        String configured = GunSystemConfig.gun().getShootSound(weapon.getType());
+        if (configured != null) {
+            Sound s = org.bukkit.Registry.SOUNDS.get(NamespacedKey.minecraft(configured.toLowerCase()));
+            if (s != null) sound = s;
+        }
+        // world 级播放：附近玩家都能听到，自带距离衰减
+        player.getWorld().playSound(player.getLocation(), sound, volume, pitch);
     }
 
     /** 普通枪械发射（原有逻辑） */
@@ -346,7 +447,7 @@ public class GunListener implements Listener {
         RecoilManager.applyRecoil(player, weapon);
 
         /* 枪声 */
-        player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 0.3f, 2.0f);
+        playGunSound(player, weapon);
     }
 
     /** Hitscan 即时命中（无弹丸飞行时间） */
@@ -365,19 +466,19 @@ public class GunListener implements Listener {
 
         if (result != null && result.getHitEntity() instanceof LivingEntity target) {
             hitPoint = result.getHitPosition().toLocation(world);
-            // 通过 AttributeCalculator 计算伤害再 apply
+            // 基础伤害计算
             double baseDamage = 1.0;
             var dmgResult = io.github.liyughj.xH.rpg.Attribute.AttributeCalculator.calcFinalDamage(
                 player, weapon, target,
                 io.github.liyughj.xH.rpg.Attribute.AttributeCalculator.DamageType.GUN,
                 baseDamage);
             double finalDmg = dmgResult.damage;
-            io.github.liyughj.xH.gun.AmmoConfig.AmmoTypeDef ammo = null;
-            if (GunSystemConfig.ammo() != null && GunSystemConfig.gun() != null) {
-                String da = GunSystemConfig.gun().getDefaultAmmo(weapon.getType());
-                if (da != null) ammo = GunSystemConfig.ammo().getAmmoType(da);
-            }
+            io.github.liyughj.xH.gun.AmmoConfig.AmmoTypeDef ammo = MagazineManager.getCurrentAmmoType(weapon);
             if (ammo != null) finalDmg *= ammo.damageMult;
+
+            // 部位伤害（与 RpgCombatListener.applyHitzone 逻辑一致）
+            finalDmg = applyHitzoneHitscan(player, weapon, target, hitPoint, finalDmg);
+
             target.damage(finalDmg, player);
         }
 
@@ -387,7 +488,64 @@ public class GunListener implements Listener {
             AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_LASER_THICKNESS));
 
         RecoilManager.applyRecoil(player, weapon);
-        player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 0.3f, 2.0f);
+        playGunSound(player, weapon);
+    }
+
+    /**
+     * Hitscan 部位伤害判定（射线的 hitPoint 代替 Projectile.getLocation()）。
+     * 与 RpgCombatListener.applyHitzone 使用相同的阈值/概率/倍率数据源。
+     */
+    private double applyHitzoneHitscan(Player shooter, ItemStack weapon, LivingEntity target,
+                                        Location hitPoint, double baseDamage) {
+        if (weapon == null || !weapon.hasItemMeta()) return baseDamage;
+
+        java.util.concurrent.ThreadLocalRandom rng = java.util.concurrent.ThreadLocalRandom.current();
+
+        // 读取部位属性（区间随机）
+        double headChance  = getWeaponRange(weapon, RpgAttribute.GUN_HEADSHOT_CHANCE);
+        double headMult    = getWeaponRange(weapon, RpgAttribute.GUN_HEADSHOT_MULT);
+        double upperChance = getWeaponRange(weapon, RpgAttribute.GUN_UPPER_CHANCE);
+        double upperMult   = getWeaponRange(weapon, RpgAttribute.GUN_UPPER_MULT);
+        double lowerChance = getWeaponRange(weapon, RpgAttribute.GUN_LOWER_CHANCE);
+        double lowerMult   = getWeaponRange(weapon, RpgAttribute.GUN_LOWER_MULT);
+        double legChance   = getWeaponRange(weapon, RpgAttribute.GUN_LEG_CHANCE);
+        double legMult     = getWeaponRange(weapon, RpgAttribute.GUN_LEG_MULT);
+        double headThresh  = getWeaponRange(weapon, RpgAttribute.GUN_HEADSHOT_THRESHOLD);
+        double bodyThresh  = getWeaponRange(weapon, RpgAttribute.GUN_BODY_THRESHOLD);
+        double legThresh   = getWeaponRange(weapon, RpgAttribute.GUN_LEG_THRESHOLD);
+
+        // 命中位置 vs 目标眼部高度
+        double feetY  = target.getLocation().getY();
+        double eyeH   = target.getEyeHeight();
+        double hitY   = hitPoint.getY();
+        double ratio  = (hitY - feetY) / Math.max(0.01, eyeH);
+
+        double chance;
+        double mult;
+
+        if (ratio >= headThresh / 100.0) {
+            chance = headChance; mult = headMult / 100.0;
+        } else if (ratio >= bodyThresh / 100.0) {
+            chance = upperChance; mult = upperMult / 100.0;
+        } else if (ratio >= legThresh / 100.0) {
+            chance = lowerChance; mult = lowerMult / 100.0;
+        } else {
+            chance = legChance; mult = legMult / 100.0;
+        }
+
+        if (chance <= 0) return baseDamage;
+        if (chance >= 100) return baseDamage * mult;
+
+        return rng.nextDouble() * 100 < chance ? baseDamage * mult : baseDamage;
+    }
+
+    /** 从武器 PDC 读取属性的区间随机值 */
+    private static double getWeaponRange(ItemStack weapon, RpgAttribute attr) {
+        io.github.liyughj.xH.rpg.Attribute.AttributeRange range =
+            io.github.liyughj.xH.rpg.Attribute.AttributeStorage.getItemAttrRange(weapon, attr);
+        return !range.isSingleValue()
+            ? range.getMin() + Math.random() * (range.getMax() - range.getMin())
+            : range.getMin();
     }
 
     /* ==================== 工具 ==================== */

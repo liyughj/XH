@@ -88,7 +88,7 @@ public class OverheatManager {
             // 开镜冷却加成
             if (AdsManager.isActive(player)) {
                 double adsBonus = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_ADS_COOL_BONUS);
-                coolRate *= (adsBonus / 100.0);
+                coolRate *= (1.0 + adsBonus / 100.0);
             }
         } else {
             coolRate = 10.0;
@@ -98,37 +98,42 @@ public class OverheatManager {
         state.heat = Math.max(0, state.heat - coolRate / 20.0);
     }
 
-    /** 获取热量百分比（0~1） */
-    public static double getHeatPercent(Player player) {
+    /** 获取热量百分比（0~1），未开启过热系统返回0 */
+    public static double getHeatPercent(Player player, ItemStack weapon) {
+        if (!GunSystemConfig.isSystemEnabled(player, "overheat")) return 0;
         OverheatState state = states.get(player.getUniqueId());
-        return state != null ? state.heat : 0;
+        if (state == null || state.heat <= 0) return 0;
+        if (weapon == null) return state.heat / 100.0; // 无武器时假定阈值100
+        double threshold = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_THRESHOLD);
+        if (threshold <= 0) return 0;
+        return Math.min(1.0, state.heat / threshold);
     }
 
     /** 获取散布因子（热量导数），已经转为倍率 */
     public static double getSpreadMultiplier(Player player, ItemStack weapon) {
         if (!GunSystemConfig.isSystemEnabled(player, "overheat")) return 1.0;
-        double heatPct = getHeatPercent(player);
+        double heatPct = getHeatPercent(player, weapon);
         if (heatPct <= 0) return 1.0;
         double factor = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_SPREAD_FACTOR);
-        return 1.0 + (heatPct / 100.0) * (factor / 100.0);
+        return 1.0 + heatPct * (factor / 100.0);
     }
 
     /** 获取后坐因子 */
     public static double getRecoilMultiplier(Player player, ItemStack weapon) {
         if (!GunSystemConfig.isSystemEnabled(player, "overheat")) return 1.0;
-        double heatPct = getHeatPercent(player);
+        double heatPct = getHeatPercent(player, weapon);
         if (heatPct <= 0) return 1.0;
         double factor = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_RECOIL_FACTOR);
-        return 1.0 + (heatPct / 100.0) * (factor / 100.0);
+        return 1.0 + heatPct * (factor / 100.0);
     }
 
     /** 获取故障率加成 */
     public static double getMalfunctionBonus(Player player, ItemStack weapon) {
         if (!GunSystemConfig.isSystemEnabled(player, "overheat")) return 0;
-        double heatPct = getHeatPercent(player);
+        double heatPct = getHeatPercent(player, weapon);
         if (heatPct <= 0) return 0;
         double factor = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_MALFUNCTION_FACTOR);
-        return (heatPct / 100.0) * (factor / 100.0);
+        return heatPct * (factor / 100.0);
     }
 
     /** 是否处于过热状态 */

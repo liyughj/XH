@@ -196,6 +196,9 @@ public final class RecoilManager {
         AmmoConfig.AmmoTypeDef ammo = MagazineManager.getCurrentAmmoType(weapon);
         if (ammo != null) mul *= ammo.recoilMult;
 
+        // 压制修正
+        mul *= SuppressionManager.getRecoilMultiplier(player);
+
         vertical *= mul;
         dX *= mul;
 

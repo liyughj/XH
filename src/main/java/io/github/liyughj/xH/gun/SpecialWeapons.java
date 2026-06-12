@@ -58,6 +58,17 @@ public final class SpecialWeapons {
             arrow.getPersistentDataContainer().set(
                 new NamespacedKey(plugin, "shotgun_pellet"),
                 PersistentDataType.DOUBLE, divider);
+
+            // 方块击穿标记
+            if (AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_PENETRATION_BLOCK_BREAK) >= 1.0) {
+                int pen = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_PENETRATION_COUNT);
+                arrow.getPersistentDataContainer().set(
+                    new NamespacedKey("xh", "pen_block_break"),
+                    PersistentDataType.BYTE, (byte) 1);
+                arrow.getPersistentDataContainer().set(
+                    new NamespacedKey("xh", "pen_count"),
+                    PersistentDataType.INTEGER, pen);
+            }
         }
 
         // 后坐只在霰弹枪上施加一次(增强)
@@ -113,6 +124,20 @@ public final class SpecialWeapons {
         arrow.setGravity(gravLevel >= 2);
         arrow.setDamage(0.01);
 
+        // 穿透等级
+        int penCount = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_PENETRATION_COUNT);
+        if (penCount > 0) arrow.setPierceLevel(penCount);
+
+        // 方块击穿标记
+        if (AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_PENETRATION_BLOCK_BREAK) >= 1.0) {
+            arrow.getPersistentDataContainer().set(
+                new NamespacedKey("xh", "pen_block_break"),
+                PersistentDataType.BYTE, (byte) 1);
+            arrow.getPersistentDataContainer().set(
+                new NamespacedKey("xh", "pen_count"),
+                PersistentDataType.INTEGER, penCount);
+        }
+
         // 弱重力
         if (gravLevel == 1) {
             new BukkitRunnable() {
@@ -146,24 +171,45 @@ public final class SpecialWeapons {
             AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_CROSSBOW_HEADSHOT_MULT));
 
         // 流血数据
-        double bleedChance = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_CROSSBOW_BLEED_CHANCE);
+        double bleedChance = AttributeStorage.getAttrValue(weapon, RpgAttribute.BLEED_CHANCE);
         if (bleedChance > 0) {
             arrow.getPersistentDataContainer().set(
-                new NamespacedKey(plugin, "crossbow_bleed_chance"),
+                new NamespacedKey(plugin, "bleed_chance"),
                 PersistentDataType.DOUBLE, bleedChance);
             arrow.getPersistentDataContainer().set(
-                new NamespacedKey(plugin, "crossbow_bleed_damage"),
+                new NamespacedKey(plugin, "bleed_damage"),
                 PersistentDataType.DOUBLE,
-                AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_CROSSBOW_BLEED_DAMAGE));
+                AttributeStorage.getAttrValue(weapon, RpgAttribute.BLEED_DAMAGE));
             arrow.getPersistentDataContainer().set(
-                new NamespacedKey(plugin, "crossbow_bleed_ticks"),
+                new NamespacedKey(plugin, "bleed_ticks"),
                 PersistentDataType.INTEGER,
-                (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_CROSSBOW_BLEED_TICKS));
+                (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.BLEED_TICKS));
         }
 
         RecoilManager.applyRecoil(player, weapon);
         player.playSound(player.getLocation(), Sound.ENTITY_ARROW_SHOOT, 0.8f, 1.2f);
+
+        // 弩装填冷却
+        double reloadTicks = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_CROSSBOW_RELOAD_TICKS);
+        if (reloadTicks > 0) {
+            crossbowCooldowns.put(player.getUniqueId(),
+                player.getWorld().getGameTime() + (long) reloadTicks);
+        }
     }
+
+    /** 弩是否在装填冷却中 */
+    public static boolean isCrossbowOnCooldown(Player player, ItemStack weapon) {
+        Long endTick = crossbowCooldowns.get(player.getUniqueId());
+        if (endTick == null) return false;
+        if (player.getWorld().getGameTime() >= endTick) {
+            crossbowCooldowns.remove(player.getUniqueId());
+            return false;
+        }
+        return true;
+    }
+
+    /** 弩装填冷却 Map */
+    private static final Map<UUID, Long> crossbowCooldowns = new HashMap<>();
 
     // ───────────────── 喷火器 ─────────────────
 

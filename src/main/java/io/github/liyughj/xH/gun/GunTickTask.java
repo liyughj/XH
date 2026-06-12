@@ -8,34 +8,34 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
 /**
- * 枪械定时任务 —— 每 5 tick 恢复扩散、后坐力、冷却 + 特效维护。
+ * 枪械定时任务 —— 每 5 tick 恢复扩散、后坐力、冷却、呼吸值、热成像、压制 + 特效维护。
  */
 public final class GunTickTask {
 
     private GunTickTask() {}
 
-    /** 启动定时任务，每 5 tick 执行一次 */
     public static void start(JavaPlugin plugin) {
         new BukkitRunnable() {
             @Override
             public void run() {
                 SpreadManager.tickRecovery();
                 RecoilManager.tickRecovery();
+                SuppressionManager.tickAll();
 
-                // 所有在线玩家的持枪维护
                 for (Player player : Bukkit.getOnlinePlayers()) {
+                    AdsManager.tick(player);
+                    AdsManager.thermalGlowTick(player);
+
                     ItemStack weapon = player.getInventory().getItemInMainHand();
 
-                    // 过热冷却（无论持枪与否都降温，持枪时用枪的属性，否则默认值）
                     OverheatManager.doCool(player, GunListener.isGunStatic(weapon) ? weapon : null);
 
                     if (!GunListener.isGunStatic(weapon)) continue;
 
-                    // 过热冒烟粒子
                     if (GunSystemConfig.isSystemEnabled(player, "overheat")) {
                         double smokeThreshold = io.github.liyughj.xH.rpg.Attribute.AttributeStorage
                             .getAttrValue(weapon, io.github.liyughj.xH.rpg.Attribute.RpgAttribute.GUN_HEAT_SMOKE_THRESHOLD);
-                        double heatPct = OverheatManager.getHeatPercent(player);
+                        double heatPct = OverheatManager.getHeatPercent(player, weapon);
                         if (smokeThreshold > 0 && heatPct >= smokeThreshold) {
                             player.getWorld().spawnParticle(
                                 Particle.SMOKE,
@@ -44,7 +44,6 @@ public final class GunTickTask {
                         }
                     }
 
-                    // 燃料/能量恢复（喷火器/激光未开火时）
                     String wt = GunSystemConfig.gun().getWeaponType(weapon.getType());
                     if ("flamethrower".equals(wt) && !SpecialWeapons.isFlameActive(player)) {
                         SpecialWeapons.regenerateFlameFuel(player);

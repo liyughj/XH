@@ -397,6 +397,7 @@ public class LevelEffectListener implements Listener {
      * 注：Paper 1.21.4 中 MAGIC modifier 没有非弃用替代 API，
      * 这是唯一能零化原版保护 EPF 的方式。
      */
+    @SuppressWarnings("deprecation")
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void stripVanillaProtection(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;

@@ -160,6 +160,9 @@ public final class SpreadManager {
             mul *= (1.0 - state.weaponAdsBonus / 100.0);
         }
 
+        // 压制修正
+        mul *= SuppressionManager.getSpreadMultiplier(player);
+
         angle *= mul;
         angle = Math.max(0.0, angle);
         angle = Math.min(state.weaponMaxAngle, Math.max(state.weaponMinAngle, angle));

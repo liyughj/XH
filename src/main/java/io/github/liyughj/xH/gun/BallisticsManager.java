@@ -43,6 +43,16 @@ public class BallisticsManager {
         double baseDamage;         // 基础伤害（用于距离衰减计算）
         Object extra;              // 特殊武器附加数据
         String ammoTrailType;      // 弹药尾迹类型: null/"flame"/"smoke"
+        int ricochetCount;         // 剩余跳弹次数
+        double ricochetChance;     // 每次命中方块的跳弹概率（%）
+        double waterSpeedMult;     // 水中弹速乘数
+        boolean glassPierce;       // 穿透玻璃
+        boolean wasInWater;        // 上一tick是否在水中
+
+        public boolean canRicochet() { return ricochetCount > 0; }
+        public void consumeRicochet() { ricochetCount--; }
+        public boolean isGlassPierce() { return glassPierce; }
+        public double getRicochetChance() { return ricochetChance; }
     }
 
     /**
@@ -57,6 +67,9 @@ public class BallisticsManager {
             arrow.setInvisible(true);
             arrow.setCritical(false);
             arrow.setGravity(false);
+            // 穿透等级
+            int penCount = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_PENETRATION_COUNT);
+            if (penCount > 0) arrow.setPierceLevel(penCount);
             return arrow;
         }
 
@@ -90,24 +103,68 @@ public class BallisticsManager {
             // 弱重力通过自定义 tick 模拟
         }
 
+        // 穿透等级（让MC允许箭矢穿透多个实体）
+        int penCount = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_PENETRATION_COUNT);
+        if (ammo != null) penCount += ammo.penetrationBonus;
+        if (penCount > 0) {
+            arrow.setPierceLevel(penCount);
+        }
+        // 方块击穿标记 (RpgCombatListener 读取)
+        boolean blockBreak = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_PENETRATION_BLOCK_BREAK) >= 1.0;
+        if (blockBreak) {
+            arrow.getPersistentDataContainer().set(
+                new org.bukkit.NamespacedKey("xh", "pen_block_break"),
+                org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
+            arrow.getPersistentDataContainer().set(
+                new org.bukkit.NamespacedKey("xh", "pen_count"),
+                org.bukkit.persistence.PersistentDataType.INTEGER, penCount);
+        }
+
         BulletMeta meta = new BulletMeta();
         meta.velocity = vel;
         meta.drag = Math.max(0, Math.min(drag, 0.5)); // 限制最大阻力
         meta.lifetime = lifetime;
         meta.trailInterval = trailInterval;
         meta.trailCounter = 0;
-        // 弹药尾迹类型
+        // 尾迹：弹药优先 > 枪械默认
         if (ammo != null && ammo.effects != null) {
             meta.ammoTrailType = ammo.effects.getString("trail", null);
-            if (meta.ammoTrailType != null && meta.trailInterval <= 0) {
-                meta.trailInterval = 2;
+        }
+        if (meta.ammoTrailType == null) {
+            int trailCode = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_BULLET_TRAIL);
+            // 0=off 1=smoke 2=flame 3=crit 4=end_rod
+            switch (trailCode) {
+                case 1: meta.ammoTrailType = "smoke"; break;
+                case 2: meta.ammoTrailType = "flame"; break;
+                case 3: meta.ammoTrailType = "crit"; break;
+                case 4: meta.ammoTrailType = "end_rod"; break;
+                default: meta.ammoTrailType = null;
             }
+        }
+        if (meta.ammoTrailType != null && meta.trailInterval <= 0) {
+            meta.trailInterval = 2;
         }
         meta.gravityLevel = gravityLevel;
         meta.falloffStart = falloffStart;
         meta.falloffEnd = falloffEnd;
         meta.minPercent = minPct;
         meta.shooter = player;
+
+        // 跳弹属性（概率在每次命中方块时判定，此处记录参数）
+        meta.ricochetChance = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_BULLET_RICOCHET_CHANCE);
+        if (meta.ricochetChance > 0) {
+            meta.ricochetCount = 1; // 最多跳弹1次
+            double ricochetAngle = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_BULLET_RICOCHET_ANGLE);
+            arrow.getPersistentDataContainer().set(
+                new org.bukkit.NamespacedKey("xh", "ricochet_angle"),
+                org.bukkit.persistence.PersistentDataType.DOUBLE, ricochetAngle);
+        }
+        // 水中弹速
+        meta.waterSpeedMult = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_BULLET_WATER_SPEED) / 100.0;
+        if (meta.waterSpeedMult <= 0) meta.waterSpeedMult = 1.0;
+        // 玻璃穿透
+        meta.glassPierce = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_BULLET_GLASS_PIERCE) >= 1.0;
+
         activeBullets.put(arrow.getUniqueId(), meta);
 
         // 弹道 tick
@@ -140,6 +197,16 @@ public class BallisticsManager {
                     arrow.setVelocity(m.velocity);
                 }
 
+                // 水中弹速修正
+                boolean nowInWater = arrow.getLocation().getBlock().isLiquid();
+                if (nowInWater && m.waterSpeedMult != 1.0) {
+                    if (!m.wasInWater) {
+                        m.velocity.multiply(m.waterSpeedMult);
+                        arrow.setVelocity(m.velocity);
+                    }
+                }
+                m.wasInWater = nowInWater;
+
                 // 弱重力（gravityLevel == 1）
                 if (m.gravityLevel == 1) {
                     m.velocity.setY(m.velocity.getY() - 0.02);
@@ -150,18 +217,26 @@ public class BallisticsManager {
                 m.trailCounter++;
                 if (m.trailInterval > 0 && m.trailCounter >= m.trailInterval) {
                     m.trailCounter = 0;
-                    Particle trailParticle = "flame".equals(m.ammoTrailType) ? Particle.FLAME : Particle.SMOKE;
-                    int trailCount = "flame".equals(m.ammoTrailType) ? 2 : 1;
-                    arrow.getWorld().spawnParticle(
-                        trailParticle,
-                        arrow.getLocation(),
-                        trailCount, 0, 0, 0, 0
-                    );
+                    renderTrailParticle(arrow, m);
                 }
             }
         }.runTaskTimer(plugin, 1L, 1L);
 
         return arrow;
+    }
+
+    /** 渲染尾迹粒子 */
+    private static void renderTrailParticle(Arrow arrow, BulletMeta m) {
+        if (m.ammoTrailType == null) return;
+        Particle p;
+        int count;
+        switch (m.ammoTrailType) {
+            case "flame":   p = Particle.FLAME; count = 2; break;
+            case "crit":    p = Particle.CRIT; count = 1; break;
+            case "end_rod": p = Particle.END_ROD; count = 1; break;
+            default:        p = Particle.SMOKE; count = 1; break; // "smoke"
+        }
+        arrow.getWorld().spawnParticle(p, arrow.getLocation(), count, 0, 0, 0, 0);
     }
 
     /** 计算距离衰减后的伤害系数 */

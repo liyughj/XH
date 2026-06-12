@@ -14,6 +14,7 @@ import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.Vector;
 
 /**
  * RPG 战斗监听器 —— 负责将 RPG 属性计算接入实际伤害事件。
@@ -82,6 +83,156 @@ public class RpgCombatListener implements Listener {
             event.setCancelled(true);
             io.github.liyughj.xH.gun.SpecialWeapons.explodeRocketOnHit(arrow, player);
         }
+
+        // 穿透方块击穿（薄墙：玻璃板/铁栏杆/栅栏等）
+        handleBlockBreak(arrow, player, event);
+
+        // 跳弹
+        handleRicochet(arrow, player, event);
+    }
+
+    /** 跳弹：子弹命中方块时以镜面反射反弹 */
+    private void handleRicochet(org.bukkit.entity.Arrow arrow, Player player, ProjectileHitEvent event) {
+        org.bukkit.block.Block hitBlock = event.getHitBlock();
+        if (hitBlock == null) return;
+
+        io.github.liyughj.xH.gun.BallisticsManager.BulletMeta meta =
+            io.github.liyughj.xH.gun.BallisticsManager.getBulletMeta(arrow.getUniqueId());
+        if (meta == null) return;
+
+        // 玻璃穿透优先：玻璃方块直接破坏并穿过
+         if (meta.isGlassPierce() && isGlassBlock(hitBlock.getType())) {
+             event.setCancelled(true);
+             hitBlock.breakNaturally();
+             return;
+         }
+
+         // 跳弹检查
+         if (!meta.canRicochet()) return;
+
+         // 每次命中方块时概率判定
+         if (meta.getRicochetChance() < 100.0 && Math.random() * 100.0 >= meta.getRicochetChance()) return;
+
+         Vector v = arrow.getVelocity();
+         Vector n = getHitNormal(event.getHitBlockFace());
+
+         // 入射角校验：dot < 0 (入射), abs(dot) > cos(maxAngle) → 入射角过大不跳弹
+         double incidenceDot = Math.abs(v.clone().normalize().dot(n));
+         double maxAngleCos = Math.cos(Math.toRadians(getRicochetMaxAngle(arrow)));
+         if (incidenceDot > maxAngleCos) return; // 入射角太大，不跳弹
+
+         event.setCancelled(true);
+         meta.consumeRicochet();
+
+         Vector reflected = v.clone().subtract(n.clone().multiply(2 * v.dot(n)));
+         reflected.multiply(0.6);
+
+        org.bukkit.Location spawnLoc = arrow.getLocation().add(reflected.clone().normalize().multiply(0.3));
+        org.bukkit.entity.Arrow newArrow = arrow.getWorld().spawn(spawnLoc, org.bukkit.entity.Arrow.class);
+        newArrow.setVelocity(reflected);
+        newArrow.setShooter(player);
+        newArrow.setInvisible(true);
+        newArrow.setCritical(false);
+        newArrow.setGravity(arrow.hasGravity());
+        copyGunPDC(arrow, newArrow);
+
+        io.github.liyughj.xH.gun.BallisticsManager.removeBullet(arrow.getUniqueId());
+        arrow.remove();
+    }
+
+    /** 获取方块面的法向量 */
+    private Vector getHitNormal(org.bukkit.block.BlockFace face) {
+        return switch (face) {
+            case UP -> new Vector(0, 1, 0);
+            case DOWN -> new Vector(0, -1, 0);
+            case NORTH -> new Vector(0, 0, -1);
+            case SOUTH -> new Vector(0, 0, 1);
+            case EAST -> new Vector(1, 0, 0);
+            case WEST -> new Vector(-1, 0, 0);
+            default -> new Vector(0, 1, 0);
+        };
+    }
+
+    /** 是否为玻璃类方块 */
+    private boolean isGlassBlock(org.bukkit.Material mat) {
+        String name = mat.name();
+        return name.contains("GLASS") || name.contains("ICE") || name.equals("GLOWSTONE");
+    }
+
+    /** 读取弹道 meta 获取跳弹最大入射角，返回角度（度） */
+    private double getRicochetMaxAngle(org.bukkit.entity.Arrow arrow) {
+        // 从 PDC 读取开枪时记录的角度
+        Double angle = arrow.getPersistentDataContainer().get(
+            new NamespacedKey(plugin, "ricochet_angle"), PersistentDataType.DOUBLE);
+        return angle != null ? angle : 45.0; // 默认 45°
+    }
+
+    /** 处理穿透弹击穿薄墙 */
+    private void handleBlockBreak(org.bukkit.entity.Arrow arrow, Player player, ProjectileHitEvent event) {
+        if (!arrow.getPersistentDataContainer().has(
+            new NamespacedKey("xh", "pen_block_break"), PersistentDataType.BYTE)) return;
+
+        org.bukkit.block.Block hitBlock = event.getHitBlock();
+        if (hitBlock == null) return;
+        if (!isThinBlock(hitBlock.getType())) return;
+
+        Integer penCount = arrow.getPersistentDataContainer().get(
+            new NamespacedKey("xh", "pen_count"), PersistentDataType.INTEGER);
+        int remaining = (penCount != null ? penCount : 0) - 1;
+
+        event.setCancelled(true);
+        // 破坏薄墙
+        hitBlock.breakNaturally();
+        arrow.remove();
+
+        if (remaining >= 0) {
+            // 在新位置生成继续飞行的箭矢
+            org.bukkit.Location spawnLoc = hitBlock.getLocation().add(0.5, 0.5, 0.5);
+            org.bukkit.entity.Arrow newArrow = arrow.getWorld().spawn(spawnLoc, org.bukkit.entity.Arrow.class);
+            newArrow.setVelocity(arrow.getVelocity());
+            newArrow.setShooter(player);
+            newArrow.setPierceLevel(Math.max(0, remaining));
+            newArrow.setInvisible(true);
+            newArrow.setCritical(false);
+            newArrow.setGravity(arrow.hasGravity());
+            // 复制枪械弹PDC标记
+            copyGunPDC(arrow, newArrow);
+            // 更新剩余穿透计数
+            newArrow.getPersistentDataContainer().set(
+                new NamespacedKey("xh", "pen_block_break"), PersistentDataType.BYTE, (byte) 1);
+            newArrow.getPersistentDataContainer().set(
+                new NamespacedKey("xh", "pen_count"), PersistentDataType.INTEGER, remaining);
+        }
+    }
+
+    /** 复制枪械相关的PDC标记到新箭矢 */
+    private void copyGunPDC(org.bukkit.entity.Arrow from, org.bukkit.entity.Arrow to) {
+        for (String key : new String[]{"gun_shooter_uuid", "gun_weapon_type", "gun_is_gun", "gun_shot_ammo", "shotgun_pellet"}) {
+            NamespacedKey nk = new NamespacedKey(plugin, key);
+            if (from.getPersistentDataContainer().has(nk, PersistentDataType.STRING)) {
+                to.getPersistentDataContainer().set(nk, PersistentDataType.STRING,
+                    from.getPersistentDataContainer().get(nk, PersistentDataType.STRING));
+            }
+        }
+        // gun_is_gun as BYTE
+        NamespacedKey gunKey = new NamespacedKey(plugin, "gun_is_gun");
+        if (from.getPersistentDataContainer().has(gunKey, PersistentDataType.BYTE)) {
+            to.getPersistentDataContainer().set(gunKey, PersistentDataType.BYTE, (byte) 1);
+        }
+        // shotgun_pellet as DOUBLE
+        NamespacedKey pelletKey = new NamespacedKey(plugin, "shotgun_pellet");
+        if (from.getPersistentDataContainer().has(pelletKey, PersistentDataType.DOUBLE)) {
+            to.getPersistentDataContainer().set(pelletKey, PersistentDataType.DOUBLE,
+                from.getPersistentDataContainer().get(pelletKey, PersistentDataType.DOUBLE));
+        }
+    }
+
+    /** 判定是否为可击穿的薄墙方块 */
+    private boolean isThinBlock(org.bukkit.Material mat) {
+        String name = mat.name();
+        return name.contains("PANE") || name.contains("_BARS") || name.contains("FENCE")
+            || name.contains("WALL") || name.contains("CHAIN") || name.contains("BAMBOO")
+            || name.contains("ROD") || name.contains("TRAPDOOR");
     }
 
     /* ==================== 伤害事件：RPG 计算入口 ==================== */
@@ -128,6 +279,11 @@ public class RpgCombatListener implements Listener {
             hitPct += AttributeStorage.getItemAttrRange(attackWeapon, RpgAttribute.HIT).roll();
         }
         hitPct += AttributeStorage.getPlayerAttrRange(attacker, RpgAttribute.HIT).roll();
+
+        // 枪械默认命中100%（无HIT属性时），使闪避对枪械生效
+        if (hitPct <= 0 && io.github.liyughj.xH.gun.GunListener.isGunStatic(attackWeapon)) {
+            hitPct = 100.0;
+        }
         hitPct = Math.min(100.0, hitPct);
 
         /* ——— 致盲削减 ——— */
@@ -200,6 +356,9 @@ public class RpgCombatListener implements Listener {
 
         /* 致盲 */
         applyBlind(player, weapon, target, event);
+
+        /* 枪械命中特效（减速/硬直/致盲） */
+        applyGunHitEffects(player, weapon, target);
     }
 
     /* ==================== 射弹处理 ==================== */
@@ -267,7 +426,7 @@ public class RpgCombatListener implements Listener {
 
         /* ── 弩箭：流血效果 ── */
         if (isGun && proj instanceof Arrow && target instanceof LivingEntity) {
-            applyCrossbowBleed(proj, target);
+            applyBleed(proj, target);
         }
         AttributeCalculator.DamageType calcType = isGun ? AttributeCalculator.DamageType.GUN
                                                          : AttributeCalculator.DamageType.PROJECTILE;
@@ -352,11 +511,17 @@ public class RpgCombatListener implements Listener {
         event.setDamage(finalDamage);
         applyHeal(player, result.heal);
 
+        // 击杀连锁伤害加成
+        if (isGun) applyKillChainDamageBonus(weapon, event);
+
         /* 破甲 */
         applyArmorBreak(player, weapon, target, event);
 
         /* 致盲 */
         applyBlind(player, weapon, target, event);
+
+        /* 枪械命中特效（减速/硬直/致盲） */
+        applyGunHitEffects(player, weapon, target);
     }
 
     /* ==================== 破甲处理 ==================== */
@@ -427,6 +592,14 @@ public class RpgCombatListener implements Listener {
         LivingEntity entity = event.getEntity();
         ArmorBreakManager.remove(entity);
         BlindManager.remove(entity);
+
+        /* 击杀连锁：击杀→BUFF */
+        if (entity.getKiller() instanceof Player killer) {
+            ItemStack weapon = killer.getInventory().getItemInMainHand();
+            if (weapon != null && weapon.hasItemMeta()) {
+                applyKillChain(killer, weapon);
+            }
+        }
     }
 
     /* ==================== 致盲处理 ==================== */
@@ -558,6 +731,103 @@ public class RpgCombatListener implements Listener {
     /** 获取霰弹枪弹丸数 */
     private double getPelletCount(ItemStack weapon) {
         return AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_SHOTGUN_PELLET_COUNT);
+    }
+
+    /* ==================== 击杀连锁 ==================== */
+
+    /**
+     * 击杀目标后，给击杀者施加 BUFF（换弹加速/伤害加成/回血）。
+     * BUFF 通过 PDC 写入武器，由 MagazineManager/DamageEvent 读取。
+     */
+    private void applyKillChain(Player killer, ItemStack weapon) {
+        if (weapon == null || !weapon.hasItemMeta()) return;
+
+        double heal = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ON_KILL_HEAL);
+        if (heal > 0) {
+            double maxHealth = killer.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue();
+            killer.setHealth(Math.min(maxHealth, killer.getHealth() + heal));
+        }
+
+        double reloadSpeed = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ON_KILL_RELOAD_SPEED);
+        double damageBonus = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ON_KILL_DAMAGE_BONUS);
+        int buffTicks = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ON_KILL_BUFF_TICKS);
+        if (buffTicks <= 0) return;
+        if (reloadSpeed <= 0 && damageBonus <= 0 && heal > 0) return; // heal handled above
+
+        // 用 PDC 写入临时 BUFF 到期时间
+        long expireTime = System.currentTimeMillis() + buffTicks * 50L;
+        var meta = weapon.getItemMeta();
+        var pdc = meta.getPersistentDataContainer();
+        if (reloadSpeed > 0) {
+            pdc.set(new NamespacedKey("xh", "kill_reload_speed"), PersistentDataType.DOUBLE, reloadSpeed);
+        }
+        if (damageBonus > 0) {
+            pdc.set(new NamespacedKey("xh", "kill_damage_bonus"), PersistentDataType.DOUBLE, damageBonus);
+        }
+        pdc.set(new NamespacedKey("xh", "kill_buff_expire"), PersistentDataType.LONG, expireTime);
+        weapon.setItemMeta(meta);
+
+        killer.sendMessage("§a斩杀! §e换弹加速+" + (int) reloadSpeed + "% 伤害+" + (int) damageBonus + "% §7(" + (buffTicks / 20) + "s)");
+    }
+
+    /** 读取武器 PDC 中的击杀连锁伤害加成，过期则清除 */
+    private void applyKillChainDamageBonus(ItemStack weapon, EntityDamageByEntityEvent event) {
+        if (!weapon.hasItemMeta()) return;
+        var pdc = weapon.getItemMeta().getPersistentDataContainer();
+        Long expire = pdc.get(new NamespacedKey("xh", "kill_buff_expire"), PersistentDataType.LONG);
+        if (expire == null || System.currentTimeMillis() > expire) {
+            if (expire != null) {
+                // 过期清理 PDC
+                var meta = weapon.getItemMeta();
+                var mpdc = meta.getPersistentDataContainer();
+                mpdc.remove(new NamespacedKey("xh", "kill_damage_bonus"));
+                mpdc.remove(new NamespacedKey("xh", "kill_buff_expire"));
+                weapon.setItemMeta(meta);
+            }
+            return;
+        }
+        Double bonus = pdc.get(new NamespacedKey("xh", "kill_damage_bonus"), PersistentDataType.DOUBLE);
+        if (bonus != null && bonus > 0) {
+            event.setDamage(event.getDamage() * (1.0 + bonus / 100.0));
+        }
+    }
+
+    /* ==================== 枪械命中特效（减速/硬直/致盲） ==================== */
+
+    /**
+     * 读取枪械属性，对命中目标施加减速/硬直/额外致盲效果。
+     */
+    private void applyGunHitEffects(Player shooter, ItemStack weapon, LivingEntity target) {
+        if (weapon == null || !weapon.hasItemMeta()) return;
+        java.util.concurrent.ThreadLocalRandom rng = java.util.concurrent.ThreadLocalRandom.current();
+
+        // 命中减速
+        double slowChance = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HIT_SLOW_CHANCE);
+        if (slowChance > 0 && rng.nextDouble() * 100.0 < slowChance) {
+            double slowAmount = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HIT_SLOW_AMOUNT);
+            int slowTicks = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HIT_SLOW_TICKS);
+            int amp = Math.min(6, Math.max(0, (int)(slowAmount / 15.0))); // 每15%一级
+            target.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                org.bukkit.potion.PotionEffectType.SLOWNESS, slowTicks, amp, false, true, true));
+        }
+
+        // 命中硬直（stagger = setVelocity 击退）
+        double staggerChance = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HIT_STAGGER_CHANCE);
+        if (staggerChance > 0 && rng.nextDouble() * 100.0 < staggerChance) {
+            double strength = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HIT_STAGGER_STRENGTH);
+            var dir = shooter.getEyeLocation().getDirection().normalize();
+            target.setVelocity(dir.multiply(strength * 0.5));
+        }
+
+        // 命中致盲（额外给目标致盲效果）
+        double blindChance = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HIT_BLIND_CHANCE);
+        if (blindChance > 0 && rng.nextDouble() * 100.0 < blindChance) {
+            int blindTicks = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HIT_BLIND_TICKS);
+            // 用已有的 BlindManager 叠加
+            // 简化：直接给短暂的 blindness 药水效果
+            target.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                org.bukkit.potion.PotionEffectType.BLINDNESS, blindTicks, 0, false, true, true));
+        }
     }
 
     /* ==================== 吸血回血 ==================== */
@@ -776,6 +1046,28 @@ public class RpgCombatListener implements Listener {
                 }
             }
         }
+
+        // 烟雾区域
+        if (ammo.getEffectBool("smoke")) {
+            Location loc = target.getLocation();
+            for (int d = 0; d < 40; d++) {
+                new org.bukkit.scheduler.BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        for (int i = 0; i < 3; i++) {
+                            loc.getWorld().spawnParticle(
+                                org.bukkit.Particle.CAMPFIRE_COSY_SMOKE,
+                                loc.clone().add(
+                                    (Math.random() - 0.5) * 3,
+                                    Math.random() * 2,
+                                    (Math.random() - 0.5) * 3
+                                ),
+                                1, 0, 0, 0, 0.01);
+                        }
+                    }
+                }.runTaskLater(plugin, d * 2L);
+            }
+        }
     }
 
     /** 获取当前发射弹种（Arrow PDC 优先 > 武器弹夹栈） */
@@ -794,19 +1086,19 @@ public class RpgCombatListener implements Listener {
         return io.github.liyughj.xH.gun.MagazineManager.getCurrentAmmoType(weapon);
     }
 
-    /* ==================== 弩箭流血 ==================== */
+    /* ==================== 通用流血 DoT ==================== */
 
-    private void applyCrossbowBleed(org.bukkit.entity.Projectile proj, LivingEntity target) {
+    private void applyBleed(org.bukkit.entity.Projectile proj, LivingEntity target) {
         Double bleedChance = proj.getPersistentDataContainer().get(
-            new NamespacedKey(plugin, "crossbow_bleed_chance"), PersistentDataType.DOUBLE);
+            new NamespacedKey(plugin, "bleed_chance"), PersistentDataType.DOUBLE);
         if (bleedChance == null || bleedChance <= 0) return;
 
         if (java.util.concurrent.ThreadLocalRandom.current().nextDouble() * 100 >= bleedChance) return;
 
         Double bleedDamage = proj.getPersistentDataContainer().get(
-            new NamespacedKey(plugin, "crossbow_bleed_damage"), PersistentDataType.DOUBLE);
+            new NamespacedKey(plugin, "bleed_damage"), PersistentDataType.DOUBLE);
         Integer bleedTicks = proj.getPersistentDataContainer().get(
-            new NamespacedKey(plugin, "crossbow_bleed_ticks"), PersistentDataType.INTEGER);
+            new NamespacedKey(plugin, "bleed_ticks"), PersistentDataType.INTEGER);
 
         if (bleedDamage == null || bleedTicks == null || bleedDamage <= 0 || bleedTicks <= 0) return;
 

@@ -12,7 +12,7 @@ authors: [ 恪深 ]
 commands:
   xh:
     description: XH插件主命令
-    usage: /xh [reload|help]
+    usage: /xh [give|reload|lore|help]
     aliases: [xH]
     permission: xh.use
     permission-message: '§c你没有权限使用此命令'
@@ -22,5 +22,5 @@ permissions:
     description: 允许使用 /xh 命令
     default: true
   xh.admin:
-    description: 允许重载插件配置
+    description: 允许重载插件配置与 /xh give
     default: op

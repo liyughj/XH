@@ -160,11 +160,16 @@ public final class XH extends JavaPlugin {
         /* 注册枪械监听器 */
         getServer().getPluginManager().registerEvents(new io.github.liyughj.xH.gun.GunListener(this), this);
 
+        /* 注册弹夹GUI监听器 */
+        getServer().getPluginManager().registerEvents(new io.github.liyughj.xH.gun.GUI.MagazineGUI(), this);
+
         /* 启动枪械定时任务（每秒恢复扩散） */
         io.github.liyughj.xH.gun.GunTickTask.start(this);
 
         /* 注册命令执行器 */
-        getCommand("xh").setExecutor(new XHCommand(this));
+        XHCommand cmd = new XHCommand(this);
+        getCommand("xh").setExecutor(cmd);
+        getCommand("xh").setTabCompleter(cmd);
 
         getLogger().info("XH插件已启用！");
         getLogger().info("满级附魔台所需书架数量：" + enchantingTableConfig.getRequiredBookshelves());
