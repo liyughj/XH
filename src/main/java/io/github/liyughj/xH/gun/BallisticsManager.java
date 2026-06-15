@@ -1,5 +1,6 @@
 package io.github.liyughj.xH.gun;
 
+import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
 import org.bukkit.Particle;
@@ -67,6 +68,8 @@ public class BallisticsManager {
             arrow.setInvisible(true);
             arrow.setCritical(false);
             arrow.setGravity(false);
+            arrow.setSilent(true);
+            arrow.setPickupStatus(org.bukkit.entity.AbstractArrow.PickupStatus.DISALLOWED);
             // 穿透等级
             int penCount = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_PENETRATION_COUNT);
             if (penCount > 0) arrow.setPierceLevel(penCount);
@@ -95,6 +98,8 @@ public class BallisticsManager {
         arrow.setVelocity(vel);
         arrow.setInvisible(true);
         arrow.setCritical(false);
+        arrow.setSilent(true);
+        arrow.setPickupStatus(org.bukkit.entity.AbstractArrow.PickupStatus.DISALLOWED);
 
         // 重力
         boolean hasGravity = gravityLevel >= 2;
@@ -123,6 +128,9 @@ public class BallisticsManager {
         BulletMeta meta = new BulletMeta();
         meta.velocity = vel;
         meta.drag = Math.max(0, Math.min(drag, 0.5)); // 限制最大阻力
+        // 基础伤害（区间随机取一值，供距离衰减计算）
+        AttributeRange dmgRange = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.GUN_DAMAGE);
+        meta.baseDamage = (dmgRange != null) ? dmgRange.roll() : 5.0;
         meta.lifetime = lifetime;
         meta.trailInterval = trailInterval;
         meta.trailCounter = 0;

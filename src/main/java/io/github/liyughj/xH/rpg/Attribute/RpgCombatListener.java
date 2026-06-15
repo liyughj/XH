@@ -244,6 +244,9 @@ public class RpgCombatListener implements Listener {
     public void onDamage(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof LivingEntity target)) return;
 
+        // 射线枪械伤害已由 RayTraceManager 完整处理，跳过重复计算
+        if (target.hasMetadata("xh_raytrace")) return;
+
         DamageCause cause = event.getCause();
 
         if (cause == DamageCause.ENTITY_ATTACK || cause == DamageCause.ENTITY_SWEEP_ATTACK) {
@@ -511,9 +514,6 @@ public class RpgCombatListener implements Listener {
         event.setDamage(finalDamage);
         applyHeal(player, result.heal);
 
-        // 击杀连锁伤害加成
-        if (isGun) applyKillChainDamageBonus(weapon, event);
-
         /* 破甲 */
         applyArmorBreak(player, weapon, target, event);
 
@@ -592,14 +592,6 @@ public class RpgCombatListener implements Listener {
         LivingEntity entity = event.getEntity();
         ArmorBreakManager.remove(entity);
         BlindManager.remove(entity);
-
-        /* 击杀连锁：击杀→BUFF */
-        if (entity.getKiller() instanceof Player killer) {
-            ItemStack weapon = killer.getInventory().getItemInMainHand();
-            if (weapon != null && weapon.hasItemMeta()) {
-                applyKillChain(killer, weapon);
-            }
-        }
     }
 
     /* ==================== 致盲处理 ==================== */
@@ -731,65 +723,6 @@ public class RpgCombatListener implements Listener {
     /** 获取霰弹枪弹丸数 */
     private double getPelletCount(ItemStack weapon) {
         return AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_SHOTGUN_PELLET_COUNT);
-    }
-
-    /* ==================== 击杀连锁 ==================== */
-
-    /**
-     * 击杀目标后，给击杀者施加 BUFF（换弹加速/伤害加成/回血）。
-     * BUFF 通过 PDC 写入武器，由 MagazineManager/DamageEvent 读取。
-     */
-    private void applyKillChain(Player killer, ItemStack weapon) {
-        if (weapon == null || !weapon.hasItemMeta()) return;
-
-        double heal = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ON_KILL_HEAL);
-        if (heal > 0) {
-            double maxHealth = killer.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue();
-            killer.setHealth(Math.min(maxHealth, killer.getHealth() + heal));
-        }
-
-        double reloadSpeed = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ON_KILL_RELOAD_SPEED);
-        double damageBonus = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ON_KILL_DAMAGE_BONUS);
-        int buffTicks = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ON_KILL_BUFF_TICKS);
-        if (buffTicks <= 0) return;
-        if (reloadSpeed <= 0 && damageBonus <= 0 && heal > 0) return; // heal handled above
-
-        // 用 PDC 写入临时 BUFF 到期时间
-        long expireTime = System.currentTimeMillis() + buffTicks * 50L;
-        var meta = weapon.getItemMeta();
-        var pdc = meta.getPersistentDataContainer();
-        if (reloadSpeed > 0) {
-            pdc.set(new NamespacedKey("xh", "kill_reload_speed"), PersistentDataType.DOUBLE, reloadSpeed);
-        }
-        if (damageBonus > 0) {
-            pdc.set(new NamespacedKey("xh", "kill_damage_bonus"), PersistentDataType.DOUBLE, damageBonus);
-        }
-        pdc.set(new NamespacedKey("xh", "kill_buff_expire"), PersistentDataType.LONG, expireTime);
-        weapon.setItemMeta(meta);
-
-        killer.sendMessage("§a斩杀! §e换弹加速+" + (int) reloadSpeed + "% 伤害+" + (int) damageBonus + "% §7(" + (buffTicks / 20) + "s)");
-    }
-
-    /** 读取武器 PDC 中的击杀连锁伤害加成，过期则清除 */
-    private void applyKillChainDamageBonus(ItemStack weapon, EntityDamageByEntityEvent event) {
-        if (!weapon.hasItemMeta()) return;
-        var pdc = weapon.getItemMeta().getPersistentDataContainer();
-        Long expire = pdc.get(new NamespacedKey("xh", "kill_buff_expire"), PersistentDataType.LONG);
-        if (expire == null || System.currentTimeMillis() > expire) {
-            if (expire != null) {
-                // 过期清理 PDC
-                var meta = weapon.getItemMeta();
-                var mpdc = meta.getPersistentDataContainer();
-                mpdc.remove(new NamespacedKey("xh", "kill_damage_bonus"));
-                mpdc.remove(new NamespacedKey("xh", "kill_buff_expire"));
-                weapon.setItemMeta(meta);
-            }
-            return;
-        }
-        Double bonus = pdc.get(new NamespacedKey("xh", "kill_damage_bonus"), PersistentDataType.DOUBLE);
-        if (bonus != null && bonus > 0) {
-            event.setDamage(event.getDamage() * (1.0 + bonus / 100.0));
-        }
     }
 
     /* ==================== 枪械命中特效（减速/硬直/致盲） ==================== */

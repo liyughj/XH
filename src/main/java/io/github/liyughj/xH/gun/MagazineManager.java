@@ -2,6 +2,7 @@ package io.github.liyughj.xH.gun;
 
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
+import io.github.liyughj.xH.lore.LoreManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.NamespacedKey;
@@ -82,6 +83,16 @@ public class MagazineManager {
         setStringPDC(weapon, KEY_CURRENT_SHOT, null);
     }
 
+    /** 获取当前发射弹种（从 consumeAmmo 暂存的 KEY_CURRENT_SHOT 读取） */
+    public static String getCurrentShotType(ItemStack weapon) {
+        return getStringPDC(weapon, KEY_CURRENT_SHOT);
+    }
+
+    /** 设置当前发射弹种标记（ChamberManager 消耗膛弹时调用） */
+    public static void setCurrentShotType(ItemStack weapon, String ammoType) {
+        setStringPDC(weapon, KEY_CURRENT_SHOT, ammoType);
+    }
+
     /** 消耗一颗子弹并返回发射的弹种ID */
     public static String consumeAmmoPopType(Player player, ItemStack weapon) {
         int current = getAmmo(weapon);
@@ -99,6 +110,25 @@ public class MagazineManager {
         if (stack == null || stack.isEmpty()) return null;
         int lastComma = stack.lastIndexOf(',');
         return lastComma >= 0 ? stack.substring(lastComma + 1) : stack;
+    }
+
+    /** 获取下发射击应使用的弹种定义（栈顶 > 枪械默认，跳过 KEY_CURRENT_SHOT 避免读到旧值）。
+     *  供弹药消费前使用（耐久/过热检查等），不依赖 KEY_CURRENT_SHOT 暂存。 */
+    public static AmmoConfig.AmmoTypeDef peekNextAmmoTypeDef(ItemStack weapon) {
+        if (GunSystemConfig.ammo() == null) return null;
+        String stackType = peekNextAmmoType(weapon);
+        if (stackType != null) {
+            AmmoConfig.AmmoTypeDef def = GunSystemConfig.ammo().getAmmoType(stackType);
+            if (def != null) return def;
+        }
+        if (GunSystemConfig.gun() != null) {
+            String defaultAmmo = GunSystemConfig.gun().getDefaultAmmo(weapon.getType());
+            if (defaultAmmo != null) {
+                AmmoConfig.AmmoTypeDef def = GunSystemConfig.ammo().getAmmoType(defaultAmmo);
+                if (def != null) return def;
+            }
+        }
+        return null;
     }
 
     /** 取当前发射应使用的弹种定义（本次射击标记 > 栈顶 > 枪械默认 > null） */
@@ -153,7 +183,7 @@ public class MagazineManager {
     }
 
     /** 从栈顶弹出一发，返回弹种ID */
-    private static String popTopFromStack(ItemStack weapon) {
+    static String popTopFromStack(ItemStack weapon) {
         String stack = getStackPDC(weapon);
         if (stack == null || stack.isEmpty()) return null;
         int lastComma = stack.lastIndexOf(',');
@@ -177,7 +207,8 @@ public class MagazineManager {
 
     private static void setStackPDC(ItemStack item, String value) {
         if (item == null) return;
-        ItemMeta meta = item.hasItemMeta() ? item.getItemMeta() : null;
+        ItemMeta meta = item.hasItemMeta() ? item.getItemMeta()
+            : org.bukkit.Bukkit.getItemFactory().getItemMeta(item.getType());
         if (meta == null) return;
         if (value == null || value.isEmpty()) {
             meta.getPersistentDataContainer().remove(KEY_MAG_STACK);
@@ -233,12 +264,15 @@ public class MagazineManager {
         int cap = getCapacity(weapon);
 
         // 弹夹满
-        if (current >= cap) return false;
+        if (current >= cap) {
+            player.sendActionBar(Component.text("弹夹已满 (" + current + "/" + cap + ")", NamedTextColor.GREEN));
+            return false;
+        }
 
-        // 检查口径匹配的弹药物品
+        // 检查口径匹配的弹药/弹夹物品
         if (GunSystemConfig.isSystemEnabled(player, "ammo")) {
             String caliber = GunSystemConfig.gun().getCaliber(weapon.getType());
-            if (caliber != null && !hasMatchingAmmo(player, caliber)) {
+            if (caliber != null && !hasMatchingAmmo(player, caliber) && !hasMatchingMagazine(player, caliber)) {
                 player.sendActionBar(Component.text(
                     "弹药不足 (需要 " + caliber + ")", NamedTextColor.RED));
                 return false;
@@ -325,13 +359,38 @@ public class MagazineManager {
 
     private static void finishReload(Player player, ItemStack weapon, boolean wasEmpty) {
         String loadedAmmoType = null;
+        int magProvided = 0; // 从弹夹物品获得的弹药数
+        boolean hasCaliber = false; // 枪械是否配置了口径（区分"无弹药"和"不需要弹药"）
 
-        // 检查背包弹药
+        // 优先从弹夹物品取弹，其次从散装弹药
         if (GunSystemConfig.isSystemEnabled(player, "ammo")) {
             String caliber = GunSystemConfig.gun().getCaliber(weapon.getType());
             if (caliber != null) {
-                loadedAmmoType = consumeAmmoItem(player, caliber);
+                hasCaliber = true;
+                MagAmmoResult magResult = consumeFromMagazine(player, caliber);
+                if (magResult != null) {
+                    loadedAmmoType = magResult.ammoType;
+                    magProvided = magResult.count;
+                }
+                if (loadedAmmoType == null) {
+                    loadedAmmoType = consumeAmmoItem(player, caliber);
+                    if (loadedAmmoType != null) magProvided = 1;
+                }
             }
+        }
+
+        // 若枪械有口径配置但没拿到弹药 → 换弹失败（弹药被他人抢走等竞态）
+        boolean ammoEnabled = GunSystemConfig.isSystemEnabled(player, "ammo");
+        if (ammoEnabled && hasCaliber && magProvided == 0 && loadedAmmoType == null) {
+            ReloadState state = reloadStates.get(player.getUniqueId());
+            if (state != null) {
+                state.reloading = false;
+                state.reloadTaskId = -1;
+                state.stagedAt = 0;
+                player.setWalkSpeed(state.originalWalkSpeed);
+            }
+            player.sendActionBar(Component.text("弹药不足", NamedTextColor.RED));
+            return;
         }
 
         // 若没拿到弹种，回退到枪械默认弹种
@@ -340,10 +399,18 @@ public class MagazineManager {
         }
 
         int cap = getCapacity(weapon);
-        int fillCount = cap;
+        int fillCount;
+
+        if (magProvided > 0) {
+            // 从弹夹/散装弹药获得的弹药，以实际获得数为准
+            fillCount = Math.min(magProvided, cap);
+        } else {
+            // 弹药系统禁用时：补满（向后兼容：旧版无弹药系统，换弹即满）
+            fillCount = cap;
+        }
 
         // 枪膛启用且非空仓换弹 → 弹夹容量-1（因为膛内还有1发）
-        if (!wasEmpty && ChamberManager.isEnabled(weapon)) {
+        if (!wasEmpty && ChamberManager.isEnabled(weapon) && fillCount == cap) {
             fillCount = cap - 1;
             if (fillCount < 1) fillCount = cap;
         }
@@ -354,6 +421,9 @@ public class MagazineManager {
         if (loadedAmmoType != null && fillCount > 0) {
             pushAmmoToStack(weapon, loadedAmmoType, fillCount);
         }
+
+        // 换弹完成后自动上膛（枪膛系统）
+        ChamberManager.afterReload(weapon);
 
         ReloadState state = reloadStates.get(player.getUniqueId());
         if (state != null) {
@@ -366,6 +436,7 @@ public class MagazineManager {
         player.playSound(player.getLocation(), Sound.BLOCK_PISTON_EXTEND, 0.4f, 1.2f);
         player.sendActionBar(Component.text(
             "装填完成 (" + fillCount + "/" + cap + ")", NamedTextColor.GREEN));
+        LoreManager.refreshGunLore(weapon);
     }
 
     /** 打断当前换弹 */
@@ -442,30 +513,94 @@ public class MagazineManager {
 
     /* ==================== 弹药背包检查 ==================== */
 
-    /** 扫描背包中有无匹配口径的弹药物品 */
+    private static final NamespacedKey KEY_GUN_ID = new NamespacedKey("xh", "gun_id");
+    private static final NamespacedKey KEY_MAGAZINE_ID = new NamespacedKey("xh", "magazine_id");
+
+    /** 扫描背包中有无匹配口径的弹药物品（排除枪械和弹夹） */
     private static boolean hasMatchingAmmo(Player player, String caliber) {
         for (ItemStack item : player.getInventory().getContents()) {
             if (item == null || !item.hasItemMeta()) continue;
-            String itemCaliber = item.getItemMeta().getPersistentDataContainer()
-                .get(new NamespacedKey("xh", "ammo_caliber"), PersistentDataType.STRING);
+            var pdc = item.getItemMeta().getPersistentDataContainer();
+            if (pdc.has(KEY_GUN_ID, PersistentDataType.STRING)) continue;      // 排除枪械
+            if (pdc.has(KEY_MAGAZINE_ID, PersistentDataType.STRING)) continue; // 排除弹夹
+            String itemCaliber = pdc.get(new NamespacedKey("xh", "ammo_caliber"), PersistentDataType.STRING);
             if (caliber.equals(itemCaliber)) return true;
         }
         return false;
     }
 
-    /** 消耗背包中第一个匹配口径的弹药，返回被消耗物品的弹种ID */
+    /** 消耗背包中第一个匹配口径的弹药，返回被消耗物品的弹种ID（排除枪械和弹夹） */
     private static String consumeAmmoItem(Player player, String caliber) {
         NamespacedKey ammoTypeKey = new NamespacedKey("xh", "ammo_type");
         for (ItemStack item : player.getInventory().getContents()) {
             if (item == null || !item.hasItemMeta()) continue;
-            String itemCaliber = item.getItemMeta().getPersistentDataContainer()
-                .get(new NamespacedKey("xh", "ammo_caliber"), PersistentDataType.STRING);
+            var pdc = item.getItemMeta().getPersistentDataContainer();
+            if (pdc.has(KEY_GUN_ID, PersistentDataType.STRING)) continue;      // 排除枪械
+            if (pdc.has(KEY_MAGAZINE_ID, PersistentDataType.STRING)) continue; // 排除弹夹
+            String itemCaliber = pdc.get(new NamespacedKey("xh", "ammo_caliber"), PersistentDataType.STRING);
             if (caliber.equals(itemCaliber)) {
-                String ammoType = item.getItemMeta().getPersistentDataContainer()
-                    .get(ammoTypeKey, PersistentDataType.STRING);
+                String ammoType = pdc.get(ammoTypeKey, PersistentDataType.STRING);
                 item.setAmount(item.getAmount() - 1);
                 return ammoType;
             }
+        }
+        return null;
+    }
+
+    /** 扫描背包中有无匹配口径且非空的弹夹物品 */
+    private static boolean hasMatchingMagazine(Player player, String caliber) {
+        NamespacedKey magCaliberKey = new NamespacedKey("xh", "mag_caliber");
+        NamespacedKey magAmmoKey = new NamespacedKey("xh", "mag_ammo");
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item == null || !item.hasItemMeta()) continue;
+            var pdc = item.getItemMeta().getPersistentDataContainer();
+            if (!pdc.has(KEY_MAGAZINE_ID, PersistentDataType.STRING)) continue;
+            String magCaliber = pdc.get(magCaliberKey, PersistentDataType.STRING);
+            if (!caliber.equals(magCaliber)) continue;
+            Integer ammo = pdc.get(magAmmoKey, PersistentDataType.INTEGER);
+            if (ammo != null && ammo > 0) return true;
+        }
+        return false;
+    }
+
+    /** 从弹夹物品消耗全部弹药，返回弹种和数量 */
+    private record MagAmmoResult(String ammoType, int count) {}
+
+    /** 从弹夹物品中消耗全部子弹，返回弹种ID和消耗数量 */
+    private static MagAmmoResult consumeFromMagazine(Player player, String caliber) {
+        NamespacedKey magCaliberKey = new NamespacedKey("xh", "mag_caliber");
+        NamespacedKey magAmmoKey = new NamespacedKey("xh", "mag_ammo");
+        NamespacedKey magStackKey = new NamespacedKey("xh", "mag_ammo_stack");
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item == null || !item.hasItemMeta()) continue;
+            var pdc = item.getItemMeta().getPersistentDataContainer();
+            if (!pdc.has(KEY_MAGAZINE_ID, PersistentDataType.STRING)) continue;
+            String magCaliber = pdc.get(magCaliberKey, PersistentDataType.STRING);
+            if (!caliber.equals(magCaliber)) continue;
+            Integer ammo = pdc.get(magAmmoKey, PersistentDataType.INTEGER);
+            if (ammo == null || ammo <= 0) continue;
+
+            // 读弹夹栈，取栈顶弹种
+            String rawStack = pdc.get(magStackKey, PersistentDataType.STRING);
+            String ammoType = null;
+            if (rawStack != null && !rawStack.isEmpty()) {
+                String[] parts = rawStack.split(",");
+                // 栈顶（最后装的，靠右）决定弹种
+                ammoType = parts[parts.length - 1].trim();
+            }
+            // 清空弹夹栈
+            setStringPDC(item, magStackKey, "");
+            setPDC(item, magAmmoKey, 0);
+
+            // 刷新弹夹 lore 显示
+            LoreManager.refreshGunLore(item);
+
+            if (ammoType == null || ammoType.isEmpty()) {
+                if (GunSystemConfig.ammo() != null) {
+                    ammoType = GunSystemConfig.ammo().getDefaultAmmoType(caliber);
+                }
+            }
+            return new MagAmmoResult(ammoType, ammo);
         }
         return null;
     }

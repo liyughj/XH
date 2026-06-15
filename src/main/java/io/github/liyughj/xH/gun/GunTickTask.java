@@ -32,6 +32,11 @@ public final class GunTickTask {
 
                     if (!GunListener.isGunStatic(weapon)) continue;
 
+                    // 疾跑禁用强制执行（兜底：登录时已在持枪不触发 onSlotChange）
+                    if (MobilityManager.isSprintBlocked(player) && player.isSprinting()) {
+                        player.setSprinting(false);
+                    }
+
                     if (GunSystemConfig.isSystemEnabled(player, "overheat")) {
                         double smokeThreshold = io.github.liyughj.xH.rpg.Attribute.AttributeStorage
                             .getAttrValue(weapon, io.github.liyughj.xH.rpg.Attribute.RpgAttribute.GUN_HEAT_SMOKE_THRESHOLD);

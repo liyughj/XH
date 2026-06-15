@@ -83,10 +83,7 @@ public class GunItemConfig {
         File configFile = new File(plugin.getDataFolder(), CONFIG_FILE_NAME);
 
         if (!configFile.exists()) {
-            plugin.saveResource(CONFIG_FILE_NAME, false);
-            if (!configFile.exists()) {
-                createDefaultConfig(configFile);
-            }
+            createDefaultConfig(configFile);
         }
 
         config = YamlConfiguration.loadConfiguration(configFile);
@@ -828,23 +825,23 @@ public class GunItemConfig {
         dc.set("items.NETHERITE_HOE.gun_attachment_slots", 127); // all 7 slots
 
         /* ==================== 全局系统开关 ==================== */
-        dc.set("systems.overheat.enabled", false);
+        dc.set("systems.overheat.enabled", true);
         dc.set("systems.overheat.global_cool_rate", 10.0);
-        dc.set("systems.malfunction.enabled", false);
+        dc.set("systems.malfunction.enabled", true);
         dc.set("systems.malfunction.global_cooldown_ticks", 40);
         dc.set("systems.magazine.enabled", true);
-        dc.set("systems.magazine.global_reload_input", "R");   // R键换弹
+        dc.set("systems.magazine.global_reload_input", "Q");   // Q键换弹（丢弃物品键）
         dc.set("systems.magazine.auto_reload", true);
-        dc.set("systems.chamber.enabled", false);
-        dc.set("systems.ammo.enabled", false);
-        dc.set("systems.durability.enabled", false);
+        dc.set("systems.chamber.enabled", true);
+        dc.set("systems.ammo.enabled", true);
+        dc.set("systems.durability.enabled", true);
         dc.set("systems.durability.global_repair_material", "IRON_INGOT");
         dc.set("systems.durability.global_repair_per_material", 5);
         dc.set("systems.durability.global_repair_cost_mode", "flat");
         dc.set("systems.durability.global_repair_cost", 1);
-        dc.set("systems.penetration.enabled", false);
+        dc.set("systems.penetration.enabled", true);
         dc.set("systems.ballistics.enabled", true);
-        dc.set("systems.special_weapons.enabled", false);
+        dc.set("systems.special_weapons.enabled", true);
 
         /* ==================== 弹匣预设 ==================== */
         dc.set("magazines.glock_17.display_name", "Glock 17 弹匣");
@@ -942,6 +939,12 @@ public class GunItemConfig {
         if (def.itemCustomModelData > 0) meta.setCustomModelData(def.itemCustomModelData);
 
         item.setItemMeta(meta);
+
+        // 初始化耐久
+        double maxDura = AttributeStorage.getAttrValue(item, RpgAttribute.GUN_DURA_MAX);
+        if (maxDura > 0) {
+            DurabilityManager.setDurability(item, maxDura);
+        }
 
         // 应用 LoreManager 模板生成 lore
         if (LoreConfig.hasInstance() && LoreConfig.instance().isEnabled()) {

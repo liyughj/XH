@@ -133,6 +133,8 @@ public final class LoreConfig {
         // --- 枪械 ---
         dc.set("gun.header", "&6═══ 枪械属性 ═══");
         dc.set("gun.order", Arrays.asList(
+            // 弹药状态（动态读取PDC）
+            "_mag_ammo", "_chamber_status", "_chamber_ammo", "_gun_dura",
             // 核心面板
             "gun_damage", "gun_rpm", "gun_mag_capacity",
             // 散布
@@ -165,9 +167,14 @@ public final class LoreConfig {
             "gun_bullet_ricochet_chance", "gun_bullet_water_speed", "gun_bullet_glass_pierce",
             // 压制
             "gun_suppress_radius", "gun_suppress_amount",
-            // 耐久
-            "gun_dura_loss_per_shot", "gun_dura_max"
+            // 耐久（仅消耗，当前/最大由 _gun_dura 状态行替代）
+            "gun_dura_loss_per_shot"
         ));
+        // --- 弹药状态（动态） ---
+        dc.set("gun._mag_ammo",        "&7弹药: &f{mag_ammo}&7/&f{mag_capacity}");
+        dc.set("gun._chamber_status",  "&7枪膛状态: {chamber_status}");
+        dc.set("gun._chamber_ammo",    "&7膛内弹种: &e{chamber_ammo}");
+        dc.set("gun._gun_dura",        "&7耐久: &f{gun_dura}&7/&f{gun_dura_max}");
         // --- 核心面板 ---
         dc.set("gun.gun_damage",         "&7伤害:       &c{value}");
         dc.set("gun.gun_rpm",            "&7射速:       &e{value} RPM");
@@ -233,7 +240,7 @@ public final class LoreConfig {
         dc.set("gun.gun_suppress_amount",   "&7压制强度:   &c{value}");
         // --- 耐久 ---
         dc.set("gun.gun_dura_loss_per_shot","&7耐久消耗:   &7{value}/发");
-        dc.set("gun.gun_dura_max",         "&7耐久上限:   &7{value}");
+        // gun_dura_max 已整合到状态行 _gun_dura 中，不再单独显示
 
         // --- 武器 / RPG ---
         dc.set("weapon.header", "&c═══ 武器属性 ═══");

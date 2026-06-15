@@ -2,6 +2,7 @@ package io.github.liyughj.xH.gun;
 
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
+import io.github.liyughj.xH.lore.LoreManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.NamespacedKey;
@@ -55,6 +56,9 @@ public class DurabilityManager {
         double newVal = current - loss;
         setDurability(weapon, newVal);
 
+        // 刷新 lore 显示最新耐久
+        LoreManager.refreshGunLore(weapon);
+
         double max = getMaxDurability(weapon);
         double pct = Math.max(0, newVal / max);
 
@@ -78,8 +82,8 @@ public class DurabilityManager {
     public static boolean shootLoss(Player player, ItemStack weapon) {
         if (!GunSystemConfig.isSystemEnabled(player, "durability")) return false;
         double loss = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_DURA_LOSS_PER_SHOT);
-        // 弹药耐久修正
-        AmmoConfig.AmmoTypeDef ammo = MagazineManager.getCurrentAmmoType(weapon);
+        // 弹药耐久修正（射击前读取，避免读到上一次射击暂存的 KEY_CURRENT_SHOT）
+        AmmoConfig.AmmoTypeDef ammo = MagazineManager.peekNextAmmoTypeDef(weapon);
         if (ammo != null) loss *= ammo.durabilityMult;
         return loseDurability(player, weapon, loss);
     }

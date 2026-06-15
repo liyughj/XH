@@ -454,8 +454,6 @@ public enum RpgAttribute {
     /* ── 开镜高级属性 ── */
     /** 开镜灵敏度倍率（100=不变，50=减半） */
     GUN_ADS_SENSITIVITY("gun_ads_sensitivity", "开镜灵敏度", ValueType.PERCENT, 10.0, 200.0, 70.0, Category.GUN),
-    /** 开镜 FOV 乘数（1.0=不变，0.5=放大2倍），服务端通过setRotation+pitch修正模拟 */
-    GUN_ADS_FOV("gun_ads_fov", "开镜视场", ValueType.PERCENT, 10.0, 100.0, 80.0, Category.GUN),
     /** 开镜晃动幅度，值越大开镜时子弹散布越大，0=无晃动 */
     GUN_ADS_SWAY_AMOUNT("gun_ads_sway_amount", "开镜晃动", ValueType.FLAT, 0.0, 10.0, 1.0, Category.GUN),
     /** 呼吸值上限（开镜时屏息消耗至此值×阈值%停止），100=默认 */
@@ -487,7 +485,7 @@ public enum RpgAttribute {
     /** 致盲持续（tick） */
     GUN_HIT_BLIND_TICKS("gun_hit_blind_ticks", "致盲持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 60.0, Category.GUN),
 
-    /* ── 击杀连锁 ── */
+    /* ── 击杀连锁（未实现，等后续RPG属性完善） ── */
     /** 击杀后换弹加速（%），持续 N tick */
     GUN_ON_KILL_RELOAD_SPEED("gun_on_kill_reload_speed", "击杀换弹加速", ValueType.PERCENT, 0.0, 500.0, 0.0, Category.GUN),
     /** 击杀后伤害加成（%） */

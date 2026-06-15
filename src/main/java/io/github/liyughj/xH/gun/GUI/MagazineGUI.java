@@ -192,7 +192,7 @@ public class MagazineGUI implements Listener {
             player.sendActionBar(Component.text("弹夹已满", NamedTextColor.RED));
             return;
         }
-        if (!consumePlayerItemDual(player, KEY_AMMO_CALIBER, caliber, KEY_AMMO_TYPE, ammoType)) {
+        if (!consumePlayerAmmoSafe(player, caliber, ammoType)) {
             player.sendActionBar(Component.text("背包中没有 §e" + ammoType + " §c弹药", NamedTextColor.RED));
             return;
         }
@@ -279,10 +279,30 @@ public class MagazineGUI implements Listener {
 
     /* ==================== 背包弹药 ==================== */
 
+    /** 安全消耗背包弹药，排除枪械和弹夹 */
+    private boolean consumePlayerAmmoSafe(Player player, String caliber, String ammoType) {
+        NamespacedKey gunIdKey = new NamespacedKey("xh", "gun_id");
+        ItemStack[] contents = player.getInventory().getContents();
+        for (ItemStack item : contents) {
+            if (item == null || !item.hasItemMeta() || item.getAmount() <= 0) continue;
+            var pdc = item.getItemMeta().getPersistentDataContainer();
+            if (pdc.has(gunIdKey, PersistentDataType.STRING)) continue;       // 排除枪械
+            if (pdc.has(KEY_MAG_ID, PersistentDataType.STRING)) continue;      // 排除弹夹
+            if (!caliber.equals(getStringPDC(item, KEY_AMMO_CALIBER))) continue;
+            if (!ammoType.equals(getStringPDC(item, KEY_AMMO_TYPE))) continue;
+            item.setAmount(item.getAmount() - 1);
+            return true;
+        }
+        return false;
+    }
+
     private Map<String, Integer> scanPlayerAmmo(Player player, String caliber) {
         Map<String, Integer> result = new LinkedHashMap<>();
+        NamespacedKey gunIdKey = new NamespacedKey("xh", "gun_id");
         for (ItemStack item : player.getInventory().getContents()) {
             if (item == null || !item.hasItemMeta()) continue;
+            if (item.getItemMeta().getPersistentDataContainer().has(gunIdKey, PersistentDataType.STRING)) continue; // 排除枪械
+            if (item.getItemMeta().getPersistentDataContainer().has(KEY_MAG_ID, PersistentDataType.STRING)) continue; // 排除弹夹
             if (!caliber.equals(getStringPDC(item, KEY_AMMO_CALIBER))) continue;
             String type = getStringPDC(item, KEY_AMMO_TYPE);
             if (type == null) continue;

@@ -39,8 +39,8 @@ public class OverheatManager {
 
         double heatPerShot = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_PER_SHOT);
 
-        // 弹药热量修正
-        AmmoConfig.AmmoTypeDef ammo = MagazineManager.getCurrentAmmoType(weapon);
+        // 弹药热量修正（射击前读取，避免读到上一次射击暂存的 KEY_CURRENT_SHOT）
+        AmmoConfig.AmmoTypeDef ammo = MagazineManager.peekNextAmmoTypeDef(weapon);
         if (ammo != null) heatPerShot *= ammo.heatMult;
 
         state.heat += heatPerShot;

@@ -3,6 +3,7 @@ package io.github.liyughj.xH.gun;
 import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
@@ -210,10 +211,11 @@ public final class RecoilManager {
         double kickPitch = kick > 0 ? (rng.nextDouble() * 2.0 - 1.0) * kick : 0;
         double kickYaw   = kick > 0 ? (rng.nextDouble() * 2.0 - 1.0) * kick : 0;
 
-        /* —— 应用旋转到玩家 —— */
+        /* —— 应用旋转到玩家（Paper Location 不可变，必须 teleport）—— */
         // 后坐使准星上移 → pitch减小
-        float newPitch = (float) (player.getLocation().getPitch() - vertical + kickPitch);
-        float newYaw   = (float) (player.getLocation().getYaw() + dX + kickYaw);
+        Location loc = player.getLocation();
+        float newPitch = (float) (loc.getPitch() - vertical + kickPitch);
+        float newYaw   = (float) (loc.getYaw() + dX + kickYaw);
 
         // clamp pitch to [-90, 90]
         if (newPitch < -90f) newPitch = -90f;
@@ -223,8 +225,9 @@ public final class RecoilManager {
         if (newYaw < -180f) newYaw += 360f;
         if (newYaw > 180f) newYaw -= 360f;
 
-        player.getLocation().setPitch(newPitch);
-        player.getLocation().setYaw(newYaw);
+        loc.setYaw(newYaw);
+        loc.setPitch(newPitch);
+        player.teleport(loc);
 
         /* —— 累加并记录 —— */
         state.accumulatedPitch += vertical;

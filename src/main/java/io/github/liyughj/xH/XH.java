@@ -158,6 +158,9 @@ public final class XH extends JavaPlugin {
         /* 初始化弹道系统 */
         io.github.liyughj.xH.gun.BallisticsManager.init(this);
 
+        /* 初始化射线命中系统 */
+        io.github.liyughj.xH.gun.RayTraceManager.init(this);
+
         /* 初始化铁砧修复 */
         io.github.liyughj.xH.anvil.AnvilRepairManager.init(this);
 

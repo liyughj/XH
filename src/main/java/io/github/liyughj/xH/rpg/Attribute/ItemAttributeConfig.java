@@ -79,10 +79,7 @@ public class ItemAttributeConfig {
         File configFile = new File(plugin.getDataFolder(), CONFIG_FILE_NAME);
 
         if (!configFile.exists()) {
-            plugin.saveResource(CONFIG_FILE_NAME, false);
-            if (!configFile.exists()) {
-                createDefaultConfig(configFile);
-            }
+            createDefaultConfig(configFile);
         }
 
         config = YamlConfiguration.loadConfiguration(configFile);

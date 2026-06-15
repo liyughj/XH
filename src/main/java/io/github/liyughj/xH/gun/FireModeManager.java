@@ -13,6 +13,7 @@ import org.bukkit.scheduler.BukkitTask;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 
 /**
  * 射击模式状态机 —— 管理每玩家当前模式、连发进度、全自动状态。
@@ -111,7 +112,7 @@ public final class FireModeManager {
      * @return true=触发了射击动作
      */
     static boolean fire(Player player, ItemStack weapon, JavaPlugin plugin,
-                        Runnable shootCallback) {
+                        BooleanSupplier shootCallback) {
         FireState state = getOrCreate(player.getUniqueId());
         refreshSettings(state, weapon);
 
@@ -122,7 +123,7 @@ public final class FireModeManager {
         /* -- 单发 -- */
         if (mode == 1) {
             if (!checkRpm(state)) return false;
-            shootCallback.run();
+            shootCallback.getAsBoolean();
             return true;
         }
 
@@ -145,7 +146,7 @@ public final class FireModeManager {
      * @return true=当前已激活（刚刚开启了），false=已关闭或未操作
      */
     static boolean toggleAuto(Player player, ItemStack weapon, JavaPlugin plugin,
-                              Runnable shootCallback) {
+                              BooleanSupplier shootCallback) {
         FireState state = getOrCreate(player.getUniqueId());
         refreshSettings(state, weapon);
 
@@ -170,7 +171,8 @@ public final class FireModeManager {
                     stopAutoInternal(state);
                     return;
                 }
-                shootCallback.run();
+                boolean fired = shootCallback.getAsBoolean();
+                if (!fired) { stopAutoInternal(state); return; }
                 if (!firstShotFired) {
                     firstShotFired = true;
                     // 重新调度为定期任务（RPM 间隔）
@@ -181,7 +183,8 @@ public final class FireModeManager {
                                 stopAutoInternal(state);
                                 return;
                             }
-                            shootCallback.run();
+                            boolean ok = shootCallback.getAsBoolean();
+                            if (!ok) { stopAutoInternal(state); return; }
                         }
                     }.runTaskTimer(plugin, interval, interval);
                     this.cancel();
@@ -262,7 +265,7 @@ public final class FireModeManager {
     }
 
     private static void scheduleBurst(Player player, JavaPlugin plugin,
-                                      Runnable shootCallback, FireState state, long intervalMs) {
+                                      BooleanSupplier shootCallback, FireState state, long intervalMs) {
         long tickInterval = Math.max(1, intervalMs / 50L);
         new BukkitRunnable() {
             int fired = 0;
@@ -276,8 +279,8 @@ public final class FireModeManager {
                     state.burstActive = false;
                     cancel(); return;
                 }
-                shootCallback.run();
-                fired++;
+                shootCallback.getAsBoolean();
+                fired++; // 即使发射失败也计数，避免死循环
                 if (fired >= total) {
                     state.burstActive = false;
                     cancel();

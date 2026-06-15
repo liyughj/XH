@@ -3,13 +3,13 @@ package io.github.liyughj.xH.gun;
 import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
+import io.github.liyughj.xH.lore.LoreManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.World;
-import org.bukkit.entity.Arrow;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -138,14 +138,14 @@ public class GunListener implements Listener {
         ItemStack weapon = player.getInventory().getItemInMainHand();
         if (!isGun(weapon)) return;
 
+        // 持枪时按Q始终阻止丢弃，改为触发换弹
+        event.setCancelled(true);
+
         // 检查弹夹系统是否启用
         if (!GunSystemConfig.isSystemEnabled(player, "magazine")) return;
 
-        // 开始换弹（内部会停全自动+退开镜），只有成功才阻止丢弃（弹夹满时允许丢枪）
-        boolean started = MagazineManager.startReload(player, weapon);
-        if (started) {
-            event.setCancelled(true);
-        }
+        // 开始换弹（内部会停全自动+退开镜）
+        MagazineManager.startReload(player, weapon);
     }
 
     /* ==================== 射击 + 开镜 ==================== */
@@ -200,10 +200,18 @@ public class GunListener implements Listener {
                     new org.bukkit.scheduler.BukkitRunnable() {
                         @Override
                         public void run() {
-                            int magNow = MagazineManager.getAmmo(weapon);
+                            if (!player.isOnline()) return;
+                            // 重新读取主手，避免闭包持有过期引用
+                            ItemStack held = player.getInventory().getItemInMainHand();
+                            if (!isGun(held)) return;
+                            int magNow = MagazineManager.getAmmo(held);
                             if (magNow > 0) {
-                                MagazineManager.setAmmo(weapon, magNow - 1);
-                                ChamberManager.setChamberLoaded(weapon, true);
+                                String boltAmmoType = MagazineManager.peekNextAmmoType(held);
+                                MagazineManager.setAmmo(held, magNow - 1);
+                                MagazineManager.popTopFromStack(held);
+                                ChamberManager.setChamberLoaded(held, true);
+                                ChamberManager.setChamberAmmoType(held, boltAmmoType);
+                                LoreManager.refreshGunLore(held);
                                 player.playSound(player.getLocation(), Sound.BLOCK_PISTON_EXTEND, 0.5f, 1.2f);
                                 player.sendActionBar(Component.text("装填完成", NamedTextColor.GREEN));
                             }
@@ -244,7 +252,7 @@ public class GunListener implements Listener {
             if ("flamethrower".equals(weaponType)) {
                 if (SpecialWeapons.startFlame(plugin, player, weapon)) {
                     FireModeManager.toggleAuto(player, weapon, plugin,
-                        () -> {}); // 喷火器不触发doShoot，由定时器自己处理
+                        () -> true); // 喷火器由定时器自己处理
                 }
                 return;
             }
@@ -252,7 +260,7 @@ public class GunListener implements Listener {
                 boolean continuous = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_LASER_CONTINUOUS) >= 1.0;
                 if (continuous) {
                     if (SpecialWeapons.startLaserContinuous(plugin, player, weapon)) {
-                        FireModeManager.toggleAuto(player, weapon, plugin, () -> {});
+                        FireModeManager.toggleAuto(player, weapon, plugin, () -> true);
                     }
                 } else {
                     SpecialWeapons.shootLaser(plugin, player, weapon);
@@ -275,7 +283,7 @@ public class GunListener implements Listener {
 
     /* ==================== 实际发射 ==================== */
 
-    private void doShoot(Player player, ItemStack weapon) {
+    private boolean doShoot(Player player, ItemStack weapon) {
 
         /* ── 武器类型分发 ── */
         String weaponType = GunSystemConfig.gun().getWeaponType(weapon.getType());
@@ -286,67 +294,73 @@ public class GunListener implements Listener {
         boolean needsStandardCheck = !weaponType.equals("flamethrower") && !weaponType.equals("laser");
 
         /* ── 切枪冷却检查 ── */
-        if (EquipManager.isEquipBlocked(player)) return;
+        if (EquipManager.isEquipBlocked(player)) return false;
 
         /* ── 疾跑→开火延迟 ── */
         int sprintDelay = EquipManager.getSprintToFireDelay(player, weapon);
         if (sprintDelay > 0) {
             player.sendActionBar(Component.text("疾跑惯性... " + sprintDelay + "tick", NamedTextColor.GRAY));
-            return;
+            return false;
         }
 
         /* ── 0. [弩冷却] 射击后装填冷却检查 ── */
         if ("crossbow".equals(weaponType) && SpecialWeapons.isCrossbowOnCooldown(player, weapon)) {
             player.sendActionBar(Component.text("装填中...", NamedTextColor.YELLOW));
-            return;
+            return false;
         }
 
         /* ── 1. [弹夹/枪膛] 弹量检查（最先） ── */
         if (needsStandardCheck && GunSystemConfig.isSystemEnabled(player, "magazine")) {
             if (ChamberManager.isEnabled(weapon)) {
-                // 枪膛启用：检查弹夹+枪膛是否都为0
-                if (MagazineManager.isEmpty(weapon) && !ChamberManager.hasChamberRound(player, weapon)) {
-                    playDryFire(player, weapon);
-                    return;
+                if (!ChamberManager.isAutoBolt(weapon)) {
+                    // 手动拉栓：必须膛内有弹才能右键射击
+                    if (!ChamberManager.isChamberLoaded(weapon)) {
+                        player.sendActionBar(Component.text("需要拉栓", NamedTextColor.YELLOW));
+                        return false;
+                    }
+                } else {
+                    // 自动拉栓：膛内有弹或弹夹有弹即可
+                    if (MagazineManager.isEmpty(weapon) && !ChamberManager.hasChamberRound(player, weapon)) {
+                        playDryFire(player, weapon);
+                        return false;
+                    }
                 }
             } else {
                 if (MagazineManager.isEmpty(weapon)) {
                     playDryFire(player, weapon);
-                    // 自动换弹（全局开关 + 枪械属性）
                     if (GunSystemConfig.isAutoReloadEnabled()
                         && AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_AUTO_RELOAD) >= 1.0) {
                         MagazineManager.startReload(player, weapon);
                     }
-                    return;
+                    return false;
                 }
             }
         }
 
         /* ── 2. [过热] 热量检查 ── */
-        if (needsOverheatCheck && OverheatManager.addHeat(player, weapon)) return;
+        if (needsOverheatCheck && OverheatManager.addHeat(player, weapon)) return false;
 
         /* ── 3. [故障] 故障检查 ── */
         if (needsStandardCheck) {
             MalfunctionManager.MalfuncType malfunc = MalfunctionManager.checkAndTrigger(player, weapon);
-            if (malfunc == MalfunctionManager.MalfuncType.JAM) return;
-            if (malfunc == MalfunctionManager.MalfuncType.MISFIRE) {
-                return; // 哑火：不消耗弹夹
-            }
-            // 炸膛：正常发射，后续处理在 checkAndTrigger 内完成
+            if (malfunc == MalfunctionManager.MalfuncType.JAM) return false;
+            if (malfunc == MalfunctionManager.MalfuncType.MISFIRE) return false;
+            // 炸膛：正常发射
         }
 
-        /* ── 11/12. [弹夹/枪膛] 消耗 ── */
+        /* ── 4. [耐久] 先检查再消耗弹药，避免子弹浪费 ── */
+        if (needsStandardCheck) {
+            if (DurabilityManager.shootLoss(player, weapon)) return false;
+        }
+
+        /* ── 5. [弹夹/枪膛] 消耗 ── */
         if (needsStandardCheck && GunSystemConfig.isSystemEnabled(player, "magazine")) {
             if (ChamberManager.isEnabled(weapon)) {
                 ChamberManager.consumeChamber(player, weapon);
             } else {
                 MagazineManager.consumeAmmo(player, weapon);
             }
-        }
-
-        /* ── 10. [耐久] ── */
-        if (needsStandardCheck) {
-            if (DurabilityManager.shootLoss(player, weapon)) return;
+            LoreManager.refreshGunLore(weapon); // 弹药变化后刷新lore显示
         }
 
         /* ── 压制AOE ── */
@@ -356,18 +370,27 @@ public class GunListener implements Listener {
         switch (weaponType) {
             case "shotgun":
                 SpecialWeapons.shootShotgun(plugin, player, weapon);
-                return;
+                playGunSound(player, weapon);
+                RecoilManager.applyRecoil(player, weapon);
+                return true;
             case "crossbow":
                 SpecialWeapons.shootCrossbow(plugin, player, weapon);
-                return;
+                playGunSound(player, weapon);
+                RecoilManager.applyRecoil(player, weapon);
+                return true;
             case "grenade_launcher":
                 SpecialWeapons.shootGrenade(plugin, player, weapon);
-                return;
+                playGunSound(player, weapon);
+                RecoilManager.applyRecoil(player, weapon);
+                return true;
             case "rocket_launcher":
                 SpecialWeapons.shootRocket(plugin, player, weapon);
-                return;
+                playGunSound(player, weapon);
+                RecoilManager.applyRecoil(player, weapon);
+                return true;
             default:
                 doShootNormal(player, weapon);
+                return true;
         }
     }
 
@@ -403,10 +426,10 @@ public class GunListener implements Listener {
         player.getWorld().playSound(player.getLocation(), sound, volume, pitch);
     }
 
-    /** 普通枪械发射（原有逻辑） */
+    /** 普通枪械发射（射线模式） */
     private void doShootNormal(Player player, ItemStack weapon) {
 
-        /* ── Hitscan 分支 ── */
+        /* ── Hitscan 分支（兼容旧配置） ── */
         if (AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_BULLET_HITSCAN) >= 1.0) {
             doHitscan(player, weapon);
             return;
@@ -415,33 +438,8 @@ public class GunListener implements Listener {
         Vector baseDir = player.getEyeLocation().getDirection();
         Vector spreadDir = SpreadCalculator.applySpread(player, weapon, baseDir);
 
-        Arrow arrow = BallisticsManager.launchBullet(player, weapon, spreadDir);
-
-        /* PDC 标记 */
-        arrow.getPersistentDataContainer().set(
-            new NamespacedKey(plugin, PDC_GUN_SHOOTER),
-            PersistentDataType.STRING,
-            player.getUniqueId().toString()
-        );
-        arrow.getPersistentDataContainer().set(
-            new NamespacedKey(plugin, PDC_GUN_WEAPON),
-            PersistentDataType.STRING,
-            weapon.getType().name()
-        );
-        arrow.getPersistentDataContainer().set(
-            new NamespacedKey(plugin, PDC_GUN_IS_GUN),
-            PersistentDataType.BYTE,
-            (byte) 1
-        );
-        // 当前发射弹种（命中时 RpgCombatListener 读取）
-        String shotAmmo = MagazineManager.peekNextAmmoType(weapon);
-        if (shotAmmo != null) {
-            arrow.getPersistentDataContainer().set(
-                new NamespacedKey(plugin, "gun_shot_ammo"),
-                PersistentDataType.STRING,
-                shotAmmo
-            );
-        }
+        /* 射线命中（替换 Arrow 实体子弹） */
+        RayTraceManager.shootRayNormal(player, weapon, spreadDir);
 
         /* 后坐力 */
         RecoilManager.applyRecoil(player, weapon);

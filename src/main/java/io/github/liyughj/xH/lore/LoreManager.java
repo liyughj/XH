@@ -3,11 +3,13 @@ package io.github.liyughj.xH.lore;
 import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
+import io.github.liyughj.xH.gun.DurabilityManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.md_5.bungee.api.ChatColor;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,6 +66,19 @@ public final class LoreManager {
      */
     public static List<Component> buildGunLore(ItemStack weapon) {
         return buildModuleLore(weapon, "gun");
+    }
+
+    /**
+     * 刷新枪械 lore（用于动态属性如耐久、弹夹等变化后更新 ItemMeta）。
+     */
+    public static void refreshGunLore(ItemStack weapon) {
+        if (weapon == null || !weapon.hasItemMeta()) return;
+        List<Component> lines = buildGunLore(weapon);
+        ItemMeta meta = weapon.getItemMeta();
+        if (meta != null) {
+            meta.lore(lines);
+            weapon.setItemMeta(meta);
+        }
     }
 
     /**
@@ -177,6 +192,17 @@ public final class LoreManager {
         }
 
         for (String attrKey : module.order) {
+            // 特殊状态键（以 _ 开头）—— 从物品PDC读取动态枪械状态
+            if (attrKey.startsWith("_")) {
+                String template = module.getTemplate(attrKey);
+                if (template == null || template.isEmpty()) continue;
+                String resolved = resolveStatePlaceholder(template, attrKey, item);
+                if (resolved != null) {
+                    lines.add(deserialize(resolved).decoration(TextDecoration.ITALIC, false));
+                }
+                continue;
+            }
+
             RpgAttribute attr = RpgAttribute.fromKey(attrKey);
             if (attr == null) continue;
 
@@ -247,6 +273,80 @@ public final class LoreManager {
         return colorize(sb.toString());
     }
 
+    /**
+     * 解析枪械动态状态占位符。
+     * 支持的 {key}:
+     * <ul>
+     *   <li>{mag_ammo}   → 当前弹夹子弹数（如 25）</li>
+     *   <li>{mag_capacity}→ 弹夹容量（如 30）</li>
+     *   <li>{chamber_status}→ 枪膛状态：空/已装填</li>
+     *   <li>{chamber_ammo}→ 膛内弹种名称（如 FMJ），无则空</li>
+     * </ul>
+     *
+     * @return 解析后的颜色文本，若物品无 gun_id 则返回 null
+     */
+    private static String resolveStatePlaceholder(String template, String stateKey, ItemStack item) {
+        if (item == null || !item.hasItemMeta()) return null;
+
+        // 确认是枪械物品
+        String gunId = item.getItemMeta().getPersistentDataContainer()
+            .get(new org.bukkit.NamespacedKey("xh", "gun_id"),
+                 org.bukkit.persistence.PersistentDataType.STRING);
+        if (gunId == null) return null;
+
+        StringBuffer sb = new StringBuffer();
+        Matcher m = PLACEHOLDER_PATTERN.matcher(template);
+        while (m.find()) {
+            String ph = m.group(1);
+            String replacement;
+            switch (ph) {
+                case "mag_ammo" -> {
+                    int ammo = io.github.liyughj.xH.gun.MagazineManager.getAmmo(item);
+                    replacement = String.valueOf(ammo);
+                }
+                case "mag_capacity" -> {
+                    int cap = io.github.liyughj.xH.gun.MagazineManager.getCapacity(item);
+                    replacement = String.valueOf(cap);
+                }
+                case "chamber_status" -> {
+                    boolean chamberEnabled = io.github.liyughj.xH.rpg.Attribute.AttributeStorage
+                        .getAttrValue(item, RpgAttribute.GUN_CHAMBER_ENABLED) >= 1.0;
+                    if (!chamberEnabled) {
+                        replacement = "&7无枪膛";
+                    } else {
+                        boolean loaded = io.github.liyughj.xH.gun.ChamberManager.isChamberLoaded(item);
+                        replacement = loaded ? "&a已装填" : "&7空";
+                    }
+                }
+                case "chamber_ammo" -> {
+                    String chamberAmmo = io.github.liyughj.xH.gun.ChamberManager.getChamberAmmoType(item);
+                    replacement = chamberAmmo != null && !chamberAmmo.isEmpty()
+                        ? chamberAmmo : "&7-";
+                }
+                case "gun_dura" -> {
+                    double dura = DurabilityManager.getDurability(item);
+                    replacement = String.valueOf(Math.round(dura));
+                }
+                case "gun_dura_max" -> {
+                    double maxDura = AttributeStorage.getAttrValue(item, RpgAttribute.GUN_DURA_MAX);
+                    replacement = String.valueOf(Math.round(maxDura));
+                }
+                case "rpg" -> {
+                    replacement = RPG_PREFIX;
+                }
+                case "reset" -> {
+                    replacement = "\u00a7r";
+                }
+                default -> {
+                    replacement = "?" + ph;
+                }
+            }
+            m.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+        }
+        m.appendTail(sb);
+        return colorize(sb.toString());
+    }
+
     /* ==================== 内部构建 (RpgAttribute) ==================== */
 
     /**
@@ -296,19 +396,35 @@ public final class LoreManager {
         return resolvePlaceholders(template, attr, item);
     }
 
-    /** 读取物品属性值并格式化 */
+    /** 读取物品属性值并格式化，区间显示为 min~max */
     private static String formatAttrValue(ItemStack item, RpgAttribute attr) {
         AttributeRange range = AttributeStorage.getItemAttrRange(item, attr);
         if (range == null) return "0";
 
-        double val = (range.getMin() + range.getMax()) / 2.0; // 区间取中值
+        double min = range.getMin();
+        double max = range.getMax();
+        boolean isRange = Math.abs(min - max) > 0.0001;
+
         if (attr.isPercent()) {
-            long rounded = Math.round(val);
-            return rounded == val ? String.valueOf(rounded) + "%" : String.format("%.1f%%", val);
+            if (!isRange) {
+                long r = Math.round(min);
+                return (r == min ? String.valueOf(r) : String.format("%.1f", min)) + "%";
+            }
+            // 区间: min%~max%
+            long rMin = Math.round(min), rMax = Math.round(max);
+            String sMin = rMin == min ? String.valueOf(rMin) : String.format("%.1f", min);
+            String sMax = rMax == max ? String.valueOf(rMax) : String.format("%.1f", max);
+            return sMin + "%/~" + sMax + "%";
         }
         // FLAT
-        long rounded = Math.round(val);
-        return rounded == val ? String.valueOf(rounded) : String.format("%.1f", val);
+        if (!isRange) {
+            long r = Math.round(min);
+            return r == min ? String.valueOf(r) : String.format("%.1f", min);
+        }
+        long rMin = Math.round(min), rMax = Math.round(max);
+        String sMin = rMin == min ? String.valueOf(rMin) : String.format("%.1f", min);
+        String sMax = rMax == max ? String.valueOf(rMax) : String.format("%.1f", max);
+        return sMin + "~" + sMax;
     }
 
     /* ==================== 颜色处理 ==================== */
