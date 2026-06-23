@@ -115,7 +115,7 @@ public class GunItemConfig {
 
                 // 读字符串属性
                 String caliber = attrSection.getString("caliber");
-                if (caliber != null && !caliber.isEmpty()) caliberMap.put(material, caliber);
+                if (caliber != null && !caliber.isEmpty()) caliberMap.put(material, AmmoConfig.normalizeCaliberId(caliber));
 
                 String weaponType = attrSection.getString("gun_weapon_type");
                 if (weaponType != null && !weaponType.isEmpty()) weaponTypeMap.put(material, weaponType);
@@ -171,7 +171,7 @@ public class GunItemConfig {
                 MagazineDef def = new MagazineDef();
                 def.id = magId;
                 def.displayName = ms.getString("display_name", magId);
-                def.caliber = ms.getString("caliber", "");
+                def.caliber = AmmoConfig.normalizeCaliberId(ms.getString("caliber", ""));
                 def.capacity = ms.getInt("capacity", 30);
                 def.itemMaterial = ms.getString("item_material", "IRON_INGOT");
                 def.itemCustomModelData = ms.getInt("item_custom_model_data", 0);
@@ -407,7 +407,6 @@ public class GunItemConfig {
             "",
             "--- 开镜高级属性 ---",
             "  gun_ads_sensitivity          开镜灵敏度",
-            "  gun_ads_fov                  开镜视场",
             "  gun_ads_sway_amount          开镜晃动（%越大散布越大）",
              "  gun_ads_breath_max           呼吸值上限（默认100）",
              "  gun_ads_breath_drain         屏息消耗/tick",
@@ -426,6 +425,7 @@ public class GunItemConfig {
             "  gun_hit_blind_ticks          致盲持续（tick）",
             "",
             "--- 击杀连锁 ---",
+            "  gun_on_kill_trigger_chance   击杀触发概率（%）",
             "  gun_on_kill_reload_speed     击杀后换弹加速（%）",
             "  gun_on_kill_damage_bonus     击杀后伤害加成（%）",
             "  gun_on_kill_heal             击杀回复生命",
@@ -644,11 +644,11 @@ public class GunItemConfig {
         dc.set("items.IRON_HOE.default_ammo", "fmj");
         dc.set("items.IRON_HOE.gun_dry_fire_sound", "BLOCK_LEVER_CLICK");
         dc.set("items.IRON_HOE.gun_reload_sound", "BLOCK_PISTON_EXTEND");
-        dc.set("items.DIAMOND_HOE.caliber", "5.56mm");
+        dc.set("items.DIAMOND_HOE.caliber", "5_56mm");
         dc.set("items.DIAMOND_HOE.default_ammo", "fmj");
         dc.set("items.DIAMOND_HOE.gun_dry_fire_sound", "BLOCK_LEVER_CLICK");
         dc.set("items.DIAMOND_HOE.gun_reload_sound", "BLOCK_PISTON_EXTEND");
-        dc.set("items.NETHERITE_HOE.caliber", ".338lapua");
+        dc.set("items.NETHERITE_HOE.caliber", "338lapua");
         dc.set("items.NETHERITE_HOE.default_ammo", "ap");
         dc.set("items.NETHERITE_HOE.gun_dry_fire_sound", "BLOCK_LEVER_CLICK");
         dc.set("items.NETHERITE_HOE.gun_reload_sound", "BLOCK_PISTON_EXTEND");
@@ -760,17 +760,14 @@ public class GunItemConfig {
 
         /* ---- 开镜高级 ---- */
         dc.set("items.IRON_HOE.gun_ads_sensitivity", 70);
-        dc.set("items.IRON_HOE.gun_ads_fov", 80);
         dc.set("items.IRON_HOE.gun_ads_sway_amount", 1.5);
         dc.set("items.IRON_HOE.gun_ads_night_vision", 0);
         dc.set("items.IRON_HOE.gun_ads_scope_type", 1);
         dc.set("items.DIAMOND_HOE.gun_ads_sensitivity", 60);
-        dc.set("items.DIAMOND_HOE.gun_ads_fov", 70);
         dc.set("items.DIAMOND_HOE.gun_ads_sway_amount", 2.5);
         dc.set("items.DIAMOND_HOE.gun_ads_night_vision", 0);
         dc.set("items.DIAMOND_HOE.gun_ads_scope_type", 1);
         dc.set("items.NETHERITE_HOE.gun_ads_sensitivity", 40);
-        dc.set("items.NETHERITE_HOE.gun_ads_fov", 50);
         dc.set("items.NETHERITE_HOE.gun_ads_sway_amount", 5.0);
         dc.set("items.NETHERITE_HOE.gun_ads_night_vision", 0);
         dc.set("items.NETHERITE_HOE.gun_ads_scope_type", 4);
@@ -785,6 +782,7 @@ public class GunItemConfig {
         dc.set("items.NETHERITE_HOE.gun_hit_blind_ticks", 40);
 
         /* ---- 击杀连锁 ---- */
+        dc.set("items.NETHERITE_HOE.gun_on_kill_trigger_chance", 100);
         dc.set("items.NETHERITE_HOE.gun_on_kill_reload_speed", 30);
         dc.set("items.NETHERITE_HOE.gun_on_kill_damage_bonus", 20);
         dc.set("items.NETHERITE_HOE.gun_on_kill_heal", 2);
@@ -849,11 +847,11 @@ public class GunItemConfig {
         dc.set("magazines.glock_17.capacity", 17);
         dc.set("magazines.glock_17.item_material", "IRON_INGOT");
         dc.set("magazines.stanag_30.display_name", "STANAG 30发 弹匣");
-        dc.set("magazines.stanag_30.caliber", "5.56mm");
+        dc.set("magazines.stanag_30.caliber", "5_56mm");
         dc.set("magazines.stanag_30.capacity", 30);
         dc.set("magazines.stanag_30.item_material", "IRON_INGOT");
         dc.set("magazines.ai_5.display_name", "AI 5发 弹匣");
-        dc.set("magazines.ai_5.caliber", ".338lapua");
+        dc.set("magazines.ai_5.caliber", "338lapua");
         dc.set("magazines.ai_5.capacity", 5);
         dc.set("magazines.ai_5.item_material", "IRON_INGOT");
 
@@ -935,7 +933,22 @@ public class GunItemConfig {
         meta.getPersistentDataContainer().set(new NamespacedKey("xh", "magazine_id"), PersistentDataType.STRING, magId);
         meta.getPersistentDataContainer().set(new NamespacedKey("xh", "mag_caliber"), PersistentDataType.STRING, def.caliber);
         meta.getPersistentDataContainer().set(new NamespacedKey("xh", "mag_capacity"), PersistentDataType.INTEGER, def.capacity);
-        meta.getPersistentDataContainer().set(new NamespacedKey("xh", "mag_ammo"), PersistentDataType.INTEGER, 0); // 空弹匣
+
+        // 用默认弹种填满弹夹
+        int fillCount = 0;
+        if (GunSystemConfig.ammo() != null) {
+            String defaultType = GunSystemConfig.ammo().getDefaultAmmoType(def.caliber);
+            if (defaultType != null) {
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < def.capacity; i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append(defaultType);
+                }
+                meta.getPersistentDataContainer().set(new NamespacedKey("xh", "mag_ammo_stack"), PersistentDataType.STRING, sb.toString());
+                fillCount = def.capacity;
+            }
+        }
+        meta.getPersistentDataContainer().set(new NamespacedKey("xh", "mag_ammo"), PersistentDataType.INTEGER, fillCount);
         if (def.itemCustomModelData > 0) meta.setCustomModelData(def.itemCustomModelData);
 
         item.setItemMeta(meta);
@@ -998,7 +1011,23 @@ public class GunItemConfig {
 
         item.setItemMeta(meta);
 
-        // 应用 LoreManager 模板生成 lore
+        // 初始化弹匣容量和弹夹栈（必须在 lore 生成之前）
+        double cap = AttributeStorage.getAttrValue(item, RpgAttribute.GUN_MAG_CAPACITY);
+        int capInt = (int) cap;
+        if (capInt > 0) {
+            MagazineManager.setAmmo(item, capInt);
+            // 用默认弹种填充弹夹栈
+            String defaultAmmoType = defaultAmmoMap.get(mat);
+            if (defaultAmmoType != null) {
+                MagazineManager.pushAmmoToStack(item, defaultAmmoType, capInt);
+            }
+            // 如果枪膛启用，自动上膛一发
+            if (ChamberManager.isEnabled(item)) {
+                ChamberManager.afterReload(item);
+            }
+        }
+
+        // 应用 LoreManager 模板生成 lore（在弹夹/枪膛初始化之后）
         if (LoreConfig.hasInstance() && LoreConfig.instance().isEnabled()) {
             List<Component> loreLines = LoreManager.buildGunLore(item);
             if (!loreLines.isEmpty()) {
@@ -1008,9 +1037,6 @@ public class GunItemConfig {
             }
         }
 
-        // 初始化弹匣容量
-        double cap = AttributeStorage.getAttrValue(item, RpgAttribute.GUN_MAG_CAPACITY);
-        MagazineManager.setAmmo(item, (int) cap);
         return item;
     }
 

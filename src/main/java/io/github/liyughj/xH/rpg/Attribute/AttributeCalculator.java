@@ -412,7 +412,8 @@ public class AttributeCalculator {
      *
      * @return 暴击后的伤害值（未触发则返回原值）
      */
-    private static double applyCrit(Player player, ItemStack weapon, double totalDamage) {
+    /** 供外部射线系统调用的暴击判定 */
+    public static double applyCrit(Player player, ItemStack weapon, double totalDamage) {
         /* 从物品读取暴击概率并 roll */
         AttributeRange chanceRange = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.CRITICAL_CHANCE);
         double critChance = Math.max(0, chanceRange.roll());
@@ -465,7 +466,8 @@ public class AttributeCalculator {
      *
      * @return DamageResult（damage=含汲取的最终伤害，heal=总吸血回复量）
      */
-    private static DamageResult applyLifesteal(Player player, ItemStack weapon, LivingEntity target, double totalDamage) {
+    /** 供外部射线系统调用的吸血判定 */
+    public static DamageResult applyLifesteal(Player player, ItemStack weapon, LivingEntity target, double totalDamage) {
         if (totalDamage <= 0 || weapon == null || !weapon.hasItemMeta()) {
             return new DamageResult(totalDamage, 0);
         }

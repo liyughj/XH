@@ -346,7 +346,7 @@ public enum RpgAttribute {
     BLEED_DAMAGE("bleed_damage", "流血伤害", ValueType.FLAT, 0.0, Double.MAX_VALUE, 0.0, Category.ORIGINAL_RPG),
     /** 流血持续（tick） */
     BLEED_TICKS("bleed_ticks", "流血持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 0.0, Category.ORIGINAL_RPG),
-    /** 弩爆头倍率（%），覆盖通用爆头倍率 */
+    /** 弩爆头倍率（%），覆盖通用爆头倍率 [射线系统使用GUN_HEADSHOT_MULT] */
     GUN_CROSSBOW_HEADSHOT_MULT("gun_crossbow_headshot_mult", "弩爆头倍率", ValueType.PERCENT, 0.0, 1000.0, 250.0, Category.GUN),
 
     /* 喷火器 */
@@ -390,7 +390,7 @@ public enum RpgAttribute {
     GUN_ROCKET_DAMAGE("gun_rocket_damage", "火箭伤害", ValueType.FLAT, 0.0, Double.MAX_VALUE, 80.0, Category.GUN),
     /** 爆炸半径（格） */
     GUN_ROCKET_RADIUS("gun_rocket_radius", "火箭半径", ValueType.FLAT, 0.0, Double.MAX_VALUE, 6.0, Category.GUN),
-    /** 火箭弹飞行速度（m/s） */
+    /** 火箭弹飞行速度（m/s）[射线系统使用GUN_BULLET_SPEED] */
     GUN_ROCKET_VELOCITY("gun_rocket_velocity", "火箭速度", ValueType.FLAT, 0.0, Double.MAX_VALUE, 30.0, Category.GUN),
     /** 追踪导弹，1=启用追踪 0=禁用 */
     GUN_ROCKET_HOMING("gun_rocket_homing", "追踪导弹", ValueType.FLAT, 0.0, 1.0, 0.0, Category.GUN),
@@ -452,7 +452,7 @@ public enum RpgAttribute {
     GUN_CAN_SPRINT("gun_can_sprint", "允许疾跑", ValueType.FLAT, 0.0, 1.0, 1.0, Category.GUN),
 
     /* ── 开镜高级属性 ── */
-    /** 开镜灵敏度倍率（100=不变，50=减半） */
+    /** 开镜灵敏度倍率（100=不变，50=减半）[服务端无法控制客户端鼠标灵敏度] */
     GUN_ADS_SENSITIVITY("gun_ads_sensitivity", "开镜灵敏度", ValueType.PERCENT, 10.0, 200.0, 70.0, Category.GUN),
     /** 开镜晃动幅度，值越大开镜时子弹散布越大，0=无晃动 */
     GUN_ADS_SWAY_AMOUNT("gun_ads_sway_amount", "开镜晃动", ValueType.FLAT, 0.0, 10.0, 1.0, Category.GUN),
@@ -485,7 +485,9 @@ public enum RpgAttribute {
     /** 致盲持续（tick） */
     GUN_HIT_BLIND_TICKS("gun_hit_blind_ticks", "致盲持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 60.0, Category.GUN),
 
-    /* ── 击杀连锁（未实现，等后续RPG属性完善） ── */
+    /* ── 击杀连锁 ── */
+    /** 击杀触发概率（%），击杀时roll判定是否激活连锁buff */
+    GUN_ON_KILL_TRIGGER_CHANCE("gun_on_kill_trigger_chance", "击杀触发概率", ValueType.PERCENT, 0.0, 100.0, 100.0, Category.GUN),
     /** 击杀后换弹加速（%），持续 N tick */
     GUN_ON_KILL_RELOAD_SPEED("gun_on_kill_reload_speed", "击杀换弹加速", ValueType.PERCENT, 0.0, 500.0, 0.0, Category.GUN),
     /** 击杀后伤害加成（%） */
@@ -506,13 +508,13 @@ public enum RpgAttribute {
     GUN_BULLET_GLASS_PIERCE("gun_bullet_glass_pierce", "玻璃穿透", ValueType.FLAT, 0.0, 1.0, 0.0, Category.GUN),
 
     /* ── 视觉/音效 ── */
-    /** 枪口火焰强度（1-5），0=关闭 */
+    /** 枪口火焰强度（1-5），0=关闭 [未实现] */
     GUN_MUZZLE_FLASH_INTENSITY("gun_muzzle_flash_intensity", "枪口火焰", ValueType.FLAT, 0.0, 5.0, 1.0, Category.GUN),
-    /** 枪口火焰颜色（RGB整数，如 0xFF6600=橙焰） */
+    /** 枪口火焰颜色（RGB整数，如 0xFF6600=橙焰）[未实现] */
     GUN_MUZZLE_FLASH_COLOR("gun_muzzle_flash_color", "焰色", ValueType.FLAT, 0.0, 16777215.0, 16744448.0, Category.GUN),
-    /** 抛壳开关，1=射击时抛弹壳 0=关 */
+    /** 抛壳开关，1=射击时抛弹壳 0=关 [未实现] */
     GUN_SHELL_EJECT("gun_shell_eject", "抛壳", ValueType.FLAT, 0.0, 1.0, 1.0, Category.GUN),
-    /** 弹壳材质（Material 名称，如 GOLD_NUGGET/IRON_NUGGET） */
+    /** 弹壳材质（Material 名称，如 GOLD_NUGGET/IRON_NUGGET）[未实现] */
     GUN_SHELL_MATERIAL("gun_shell_material", "弹壳材质", ValueType.FLAT, 0.0, 10.0, 0.0, Category.GUN),
     /** 命中标记：0=默认(红) 1=十字 2=圆圈 3=菱形 */
     GUN_HIT_MARKER_TYPE("gun_hit_marker_type", "命中标记", ValueType.FLAT, 0.0, 3.0, 0.0, Category.GUN),

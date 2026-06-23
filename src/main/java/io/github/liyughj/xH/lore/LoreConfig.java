@@ -145,6 +145,8 @@ public final class LoreConfig {
             "gun_bullet_speed", "gun_range", "gun_penetration_count",
             // 换弹
             "gun_reload_time_ticks", "gun_reload_empty_time_ticks",
+            // 枪膛
+            "gun_chamber_tactical_reload_bonus", "gun_chamber_bolt_time_ticks", "gun_chamber_auto_bolt",
             // 爆头
             "gun_headshot_chance", "gun_headshot_mult",
             // 过热
@@ -162,7 +164,7 @@ public final class LoreConfig {
             // 命中特效
             "gun_hit_slow_chance", "gun_hit_slow_amount", "gun_hit_stagger_chance", "gun_hit_blind_chance",
             // 击杀连锁
-            "gun_on_kill_heal", "gun_on_kill_reload_speed", "gun_on_kill_damage_bonus",
+            "gun_on_kill_trigger_chance", "gun_on_kill_heal", "gun_on_kill_reload_speed", "gun_on_kill_damage_bonus",
             // 弹道高级
             "gun_bullet_ricochet_chance", "gun_bullet_water_speed", "gun_bullet_glass_pierce",
             // 压制
@@ -195,6 +197,10 @@ public final class LoreConfig {
         // --- 换弹 ---
         dc.set("gun.gun_reload_time_ticks","&7换弹:       &f{value}tick");
         dc.set("gun.gun_reload_empty_time_ticks","&7空仓换弹: &f{value}tick");
+        // --- 枪膛 ---
+        dc.set("gun.gun_chamber_tactical_reload_bonus","&7战术换弹加成: &a+{value}");
+        dc.set("gun.gun_chamber_bolt_time_ticks","&7拉栓时间: &7{value}tick");
+        dc.set("gun.gun_chamber_auto_bolt","&7自动拉栓: &a{value}");
         // --- 爆头 ---
         dc.set("gun.gun_headshot_chance", "&7爆头率:     &e{value}");
         dc.set("gun.gun_headshot_mult",   "&7爆头倍率:   &e{value}");
@@ -228,6 +234,7 @@ public final class LoreConfig {
         dc.set("gun.gun_hit_stagger_chance","&7命中硬直:   &e{value}");
         dc.set("gun.gun_hit_blind_chance",  "&7命中致盲:   &5{value}");
         // --- 击杀连锁 ---
+        dc.set("gun.gun_on_kill_trigger_chance","&7击杀触发概率: &e{value}");
         dc.set("gun.gun_on_kill_heal",     "&7击杀回血:   &c+{value}");
         dc.set("gun.gun_on_kill_reload_speed","&7击杀换弹:  &a+{value}");
         dc.set("gun.gun_on_kill_damage_bonus","&7击杀增伤:  &c+{value}");

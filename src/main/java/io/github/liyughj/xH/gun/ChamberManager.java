@@ -107,11 +107,17 @@ public class ChamberManager {
         if (!isEnabled(weapon)) return;
         // 膛内已有弹：不覆盖（战术换弹保留膛内原有弹种）
         if (isChamberLoaded(weapon)) return;
-        // 从弹夹栈顶取一发压入枪膛
-        String ammoType = MagazineManager.peekNextAmmoType(weapon);
-        if (ammoType == null) return;
         int mag = MagazineManager.getAmmo(weapon);
         if (mag <= 0) return;
+        // 从弹夹栈顶取一发压入枪膛
+        String ammoType = MagazineManager.peekNextAmmoType(weapon);
+        // 兜底：栈为空时（如刚创建的枪），使用枪械默认弹种
+        if (ammoType == null) {
+            if (GunSystemConfig.gun() != null) {
+                ammoType = GunSystemConfig.gun().getDefaultAmmo(weapon.getType());
+            }
+            if (ammoType == null) return;
+        }
         MagazineManager.setAmmo(weapon, mag - 1);
         MagazineManager.popTopFromStack(weapon);
         setChamberLoaded(weapon, true);

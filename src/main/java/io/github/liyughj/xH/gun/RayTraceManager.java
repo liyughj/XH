@@ -1,14 +1,19 @@
 package io.github.liyughj.xH.gun;
 
+import io.github.liyughj.xH.rpg.Attribute.AttributeCalculator;
 import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
+import io.github.liyughj.xH.rpg.Attribute.RpgCombatListener;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.damage.DamageType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -36,7 +41,18 @@ public final class RayTraceManager {
     private static final double STEP = 0.3;
 
     private RayTraceManager() {}
-    public static void init(JavaPlugin p) { plugin = p; }
+    public static void init(JavaPlugin p) {
+        plugin = p;
+        // 注册玩家离线清理
+        p.getServer().getPluginManager().registerEvents(new QuitListener(), p);
+    }
+
+    private static class QuitListener implements Listener {
+        @EventHandler
+        public void onQuit(PlayerQuitEvent event) {
+            remoteRockets.remove(event.getPlayer().getUniqueId());
+        }
+    }
 
     // ==================== API：普通射线（普通枪/霰弹） ====================
 
@@ -149,15 +165,17 @@ public final class RayTraceManager {
             }
         }
 
-        // ── 水中弹速：射线穿过水方块时缩短有效距离 ──
-        for (double d = 0; d < blockDist; d += 0.5) {
+        // ── 水中弹速：穿水时直接缩短有效距离，避免修改循环边界变量 ──
+        double waterPenaltyAccum = 0;
+        double checkStep = 0.5;
+        for (double d = 0; d < blockDist; d += checkStep) {
             Location ck = eye.clone().add(currentDir.clone().multiply(d));
             if (ck.getBlock().isLiquid()) {
-                double waterPenalty = 0.5 * (1.0 / waterSpeedPct - 1.0);
-                blockDist -= waterPenalty;
-                if (blockDist <= d) { blockDist = d; break; }
+                waterPenaltyAccum += checkStep * (1.0 / waterSpeedPct - 1.0);
             }
         }
+        blockDist -= waterPenaltyAccum;
+        if (blockDist <= 0) blockDist = checkStep;
 
         // ── 实体收集 ──
         record EntityHit(LivingEntity entity, Location hitLoc, double distance) {}
@@ -219,8 +237,22 @@ public final class RayTraceManager {
                 finalDamage *= (1.0 - t * (1.0 - mp));
             }
 
+            // ── RPG：暴击 ──
+            finalDamage = AttributeCalculator.applyCrit(shooter, weapon, finalDamage);
+
+            // ── RPG：穿透（低穿/高穿）──
+            AttributeCalculator.PenetrationResult penResult =
+                AttributeCalculator.calcPenetration(shooter, weapon, hit.entity, finalDamage);
+            finalDamage += penResult.extraDamage;
+
+            // ── RPG：破甲（已有破甲伤害倍率）──
+            double abMult = RpgCombatListener.applyRayArmorBreak(shooter, weapon, hit.entity);
+            if (abMult > 1.0) finalDamage *= abMult;
+
+            // ── 部位伤害 ──
             finalDamage = applyHitzone(shooter, weapon, hit.entity, hit.hitLoc, finalDamage);
 
+            // ── 弹药护甲穿透 ──
             if (ammo != null) {
                 int armorIgnore = ammo.getEffectInt("armor_ignore", 0);
                 if (armorIgnore > 0 && hit.entity.getAttribute(org.bukkit.attribute.Attribute.ARMOR) != null) {
@@ -235,11 +267,32 @@ public final class RayTraceManager {
 
             if (finalDamage <= 0) { hitCount++; continue; }
 
+            // ── 击杀连锁伤害加成 ──
+            finalDamage *= MagazineManager.getKillChainDamageFactor(weapon);
+
+            // ── RPG：闪避/命中/致盲 ──
+            if (RpgCombatListener.checkRayDodge(shooter, weapon, hit.entity)) {
+                hitCount++;
+                continue;
+            }
+
+            // ── 伤害 ──
             hit.entity.setMetadata("xh_raytrace", new FixedMetadataValue(plugin, true));
             DamageSource dmgSource = DamageSource.builder(DamageType.ARROW)
                 .withCausingEntity(shooter).withDirectEntity(shooter).build();
             hit.entity.damage(finalDamage, dmgSource);
             hit.entity.removeMetadata("xh_raytrace", plugin);
+
+            // ── RPG：吸血 ──
+            AttributeCalculator.DamageResult lsResult =
+                AttributeCalculator.applyLifesteal(shooter, weapon, hit.entity, finalDamage);
+            if (lsResult.heal > 0) RpgCombatListener.applyHeal(shooter, lsResult.heal);
+
+            // ── RPG：致盲 ──
+            RpgCombatListener.applyRayBlind(shooter, weapon, hit.entity);
+
+            // ── RPG：命中特效（减速/硬直/致盲）──
+            RpgCombatListener.applyGunHitEffects(shooter, weapon, hit.entity);
 
             applyAmmoEffects(shooter, weapon, hit.entity);
             hitEntities.add(hit.entity);
@@ -279,8 +332,14 @@ public final class RayTraceManager {
         if (gravLevel == 2) gravityPerStep = 0.005;
         else if (gravLevel == 1) gravityPerStep = 0.002;
 
+        // 弩专用伤害（优先 GUN_CROSSBOW_DAMAGE，回退 GUN_DAMAGE）
+        AttributeRange crossbowDmgRange = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.GUN_CROSSBOW_DAMAGE);
+        double crossbowDmg = crossbowDmgRange != null && crossbowDmgRange.getMax() > RpgAttribute.GUN_CROSSBOW_DAMAGE.getDefaultValue()
+            ? crossbowDmgRange.roll() : 0;
+
         SteppedResult result = steppedRay(shooter, weapon, direction, maxRange, gravityPerStep,
-            false, 0, 0, false, 0, trailType, trailInterval, ammo, false, false);
+            false, 0, 0, false, 0, trailType, trailInterval, ammo, false, false,
+            crossbowDmg);
         return result.hitEntities;
     }
 
@@ -314,7 +373,8 @@ public final class RayTraceManager {
         if (trailInterval <= 0) trailInterval = 3;
 
         SteppedResult result = steppedRay(shooter, weapon, direction, maxRange, gravityPerStep,
-            false, 0, 0, true, bounceCount, trailType, trailInterval, ammo, false, false);
+            false, 0, 0, true, bounceCount, trailType, trailInterval, ammo, false, false,
+            0);
 
         Location hitPoint = result.finalLocation;
         if (fuseTicks > 0) {
@@ -324,14 +384,15 @@ public final class RayTraceManager {
                 int remaining = fuseTicks;
                 @Override
                 public void run() {
+                    World w = expPoint.getWorld();
+                    if (w == null) { cancel(); return; } // 世界已被卸载
                     if (remaining <= 0) {
                         SpecialWeapons.explodeGrenadeAt(shooter, expPoint, radius, damage,
                             selfFactor, knockback, destroyBlocks);
                         cancel();
                         return;
                     }
-                    expPoint.getWorld().spawnParticle(Particle.SMOKE, expPoint,
-                        1, 0.05, 0.05, 0.05, 0);
+                    w.spawnParticle(Particle.SMOKE, expPoint, 1, 0.05, 0.05, 0.05, 0);
                     remaining--;
                 }
             }.runTaskTimer(plugin, 0L, 1L);
@@ -385,7 +446,7 @@ public final class RayTraceManager {
 
         SteppedResult result = steppedRay(shooter, weapon, direction, maxRange, 0,
             homing, homingStrength, homingRange, false, 0, trailType, trailInterval, ammo,
-            true, false);
+            true, true, 0);
 
         Location hitPoint = result.finalLocation;
 
@@ -413,6 +474,11 @@ public final class RayTraceManager {
     /** 玩家切武器/离线时清除遥控火箭 */
     public static boolean hasRemoteRocket(UUID uuid) {
         return remoteRockets.containsKey(uuid);
+    }
+
+    /** 清理玩家遥控火箭（PlayerQuit/PlayerDeath 时调用） */
+    public static void cleanupRemote(UUID uuid) {
+        remoteRockets.remove(uuid);
     }
 
     // ==================== 步进射线核心 ====================
@@ -443,7 +509,8 @@ public final class RayTraceManager {
                                              boolean bounce, int maxBounces,
                                              int trailType, int trailInterval,
                                              AmmoConfig.AmmoTypeDef ammo,
-                                             boolean isRocket, boolean noPenetrate) {
+                                             boolean isRocket, boolean noPenetrate,
+                                             double baseDamageOverride) {
         List<LivingEntity> hitEntities = new ArrayList<>();
         World world = shooter.getWorld();
         Location pos = shooter.getEyeLocation().clone();
@@ -472,8 +539,9 @@ public final class RayTraceManager {
 
         int hitCount = 0;
         Set<UUID> hitEntitiesThisShot = new HashSet<>();
+        boolean entityStop = false; // 爆炸武器命中实体后立即停止
 
-        while (traveled < maxRange) {
+        while (traveled < maxRange && !entityStop) {
             // ── 水中弹速 ──
             double step = STEP;
             if (pos.getBlock().isLiquid()) step *= waterSpeedPct;
@@ -537,7 +605,7 @@ public final class RayTraceManager {
                 if (hitCount > 0 && penSound)
                     world.playSound(pos, Sound.ENTITY_ARROW_HIT, 0.4f, 1.5f);
 
-                double baseDamage = rollGunDamage(weapon);
+                double baseDamage = baseDamageOverride > 0 ? baseDamageOverride : rollGunDamage(weapon);
                 double finalDamage = baseDamage;
                 if (ammo != null) finalDamage *= ammo.damageMult;
 
@@ -557,6 +625,19 @@ public final class RayTraceManager {
                     finalDamage *= (1.0 - t * (1.0 - mp));
                 }
 
+                // ── RPG：暴击 ──
+                finalDamage = AttributeCalculator.applyCrit(shooter, weapon, finalDamage);
+
+                // ── RPG：穿透（低穿/高穿）──
+                AttributeCalculator.PenetrationResult penResult =
+                    AttributeCalculator.calcPenetration(shooter, weapon, le, finalDamage);
+                finalDamage += penResult.extraDamage;
+
+                // ── RPG：破甲（已有破甲伤害倍率）──
+                double abMult = RpgCombatListener.applyRayArmorBreak(shooter, weapon, le);
+                if (abMult > 1.0) finalDamage *= abMult;
+
+                // ── 部位伤害 ──
                 finalDamage = applyHitzone(shooter, weapon, le, pos, finalDamage);
 
                 if (ammo != null) {
@@ -572,14 +653,34 @@ public final class RayTraceManager {
                 }
 
                 if (finalDamage > 0) {
+                    // ── RPG：闪避/命中/致盲 ──
+                    if (RpgCombatListener.checkRayDodge(shooter, weapon, le)) {
+                        hitEntitiesThisShot.add(le.getUniqueId());
+                        hitCount++;
+                        continue;
+                    }
+
+                    // ── 伤害 ──
                     le.setMetadata("xh_raytrace", new FixedMetadataValue(plugin, true));
                     DamageSource dmgSource = DamageSource.builder(DamageType.ARROW)
                         .withCausingEntity(shooter).withDirectEntity(shooter).build();
                     le.damage(finalDamage, dmgSource);
                     le.removeMetadata("xh_raytrace", plugin);
 
+                    // ── RPG：吸血 ──
+                    AttributeCalculator.DamageResult lsResult =
+                        AttributeCalculator.applyLifesteal(shooter, weapon, le, finalDamage);
+                    if (lsResult.heal > 0) RpgCombatListener.applyHeal(shooter, lsResult.heal);
+
+                    // ── RPG：致盲 ──
+                    RpgCombatListener.applyRayBlind(shooter, weapon, le);
+
+                    // ── RPG：命中特效（减速/硬直/致盲）──
+                    RpgCombatListener.applyGunHitEffects(shooter, weapon, le);
+
                     applyAmmoEffects(shooter, weapon, le);
                     hitEntities.add(le);
+                    if (noPenetrate) entityStop = true; // 爆炸武器命中后停止
                 }
                 hitEntitiesThisShot.add(le.getUniqueId());
                 hitCount++;

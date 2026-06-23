@@ -360,9 +360,10 @@ public class MagazineManager {
     private static void finishReload(Player player, ItemStack weapon, boolean wasEmpty) {
         String loadedAmmoType = null;
         int magProvided = 0; // 从弹夹物品获得的弹药数
-        boolean hasCaliber = false; // 枪械是否配置了口径（区分"无弹药"和"不需要弹药"）
+        String magazineStackData = null; // 弹夹交换时保留原始栈
+        boolean hasCaliber = false;
 
-        // 优先从弹夹物品取弹，其次从散装弹药
+        // 优先弹夹交换（消耗整个弹夹物品），其次散装弹药
         if (GunSystemConfig.isSystemEnabled(player, "ammo")) {
             String caliber = GunSystemConfig.gun().getCaliber(weapon.getType());
             if (caliber != null) {
@@ -371,6 +372,7 @@ public class MagazineManager {
                 if (magResult != null) {
                     loadedAmmoType = magResult.ammoType;
                     magProvided = magResult.count;
+                    magazineStackData = magResult.stackData;
                 }
                 if (loadedAmmoType == null) {
                     loadedAmmoType = consumeAmmoItem(player, caliber);
@@ -379,7 +381,7 @@ public class MagazineManager {
             }
         }
 
-        // 若枪械有口径配置但没拿到弹药 → 换弹失败（弹药被他人抢走等竞态）
+        // 若枪械有口径配置但没拿到弹药 → 换弹失败
         boolean ammoEnabled = GunSystemConfig.isSystemEnabled(player, "ammo");
         if (ammoEnabled && hasCaliber && magProvided == 0 && loadedAmmoType == null) {
             ReloadState state = reloadStates.get(player.getUniqueId());
@@ -402,14 +404,13 @@ public class MagazineManager {
         int fillCount;
 
         if (magProvided > 0) {
-            // 从弹夹/散装弹药获得的弹药，以实际获得数为准
             fillCount = Math.min(magProvided, cap);
         } else {
-            // 弹药系统禁用时：补满（向后兼容：旧版无弹药系统，换弹即满）
+            // 弹药系统禁用时：补满
             fillCount = cap;
         }
 
-        // 枪膛启用且非空仓换弹 → 弹夹容量-1（因为膛内还有1发）
+        // 枪膛启用且非空仓换弹 → 弹夹容量-1
         if (!wasEmpty && ChamberManager.isEnabled(weapon) && fillCount == cap) {
             fillCount = cap - 1;
             if (fillCount < 1) fillCount = cap;
@@ -417,9 +418,16 @@ public class MagazineManager {
 
         setAmmo(weapon, fillCount);
 
-        // 将装入的弹种压入弹夹栈底（倒序：后装的先发射）
+        // 清空旧弹夹栈，装入新弹药
+        clearAmmoStack(weapon);
         if (loadedAmmoType != null && fillCount > 0) {
-            pushAmmoToStack(weapon, loadedAmmoType, fillCount);
+            if (magazineStackData != null && !magazineStackData.isEmpty()) {
+                // 弹夹交换：直接复制弹夹栈（保留混装弹种顺序）
+                setStackPDC(weapon, magazineStackData);
+            } else {
+                // 散装弹药：压入统一弹种
+                pushAmmoToStack(weapon, loadedAmmoType, fillCount);
+            }
         }
 
         // 换弹完成后自动上膛（枪膛系统）
@@ -511,6 +519,63 @@ public class MagazineManager {
         weapon.setItemMeta(meta);
     }
 
+    /** 获取击杀连锁伤害加成乘数（≥1.0），过期自动清除 */
+    public static double getKillChainDamageFactor(ItemStack weapon) {
+        if (weapon == null || !weapon.hasItemMeta()) return 1.0;
+        var pdc = weapon.getItemMeta().getPersistentDataContainer();
+        Long expire = pdc.get(new NamespacedKey("xh", "kill_buff_expire"), PersistentDataType.LONG);
+        if (expire == null || System.currentTimeMillis() > expire) {
+            if (expire != null) clearKillChainPDC(weapon);
+            return 1.0;
+        }
+        Double bonus = pdc.get(new NamespacedKey("xh", "kill_damage_bonus"), PersistentDataType.DOUBLE);
+        return bonus != null ? (1.0 + bonus / 100.0) : 1.0;
+    }
+
+    /** 击杀时尝试激活连锁buff：roll触发概率 → 写入武器PDC + 回血。返回true=已激活 */
+    public static boolean tryApplyKillChainBuffs(Player player, ItemStack weapon) {
+        if (weapon == null || !weapon.hasItemMeta() || GunSystemConfig.ammo() == null) return false;
+
+        double triggerChance = io.github.liyughj.xH.rpg.Attribute.AttributeStorage.getAttrValue(weapon,
+            io.github.liyughj.xH.rpg.Attribute.RpgAttribute.GUN_ON_KILL_TRIGGER_CHANCE);
+        if (triggerChance <= 0) return false;
+        if (Math.random() * 100.0 > triggerChance) return false;
+
+        double reloadSpeed = io.github.liyughj.xH.rpg.Attribute.AttributeStorage.getAttrValue(weapon,
+            io.github.liyughj.xH.rpg.Attribute.RpgAttribute.GUN_ON_KILL_RELOAD_SPEED);
+        double damageBonus = io.github.liyughj.xH.rpg.Attribute.AttributeStorage.getAttrValue(weapon,
+            io.github.liyughj.xH.rpg.Attribute.RpgAttribute.GUN_ON_KILL_DAMAGE_BONUS);
+        double heal = io.github.liyughj.xH.rpg.Attribute.AttributeStorage.getAttrValue(weapon,
+            io.github.liyughj.xH.rpg.Attribute.RpgAttribute.GUN_ON_KILL_HEAL);
+        long buffTicks = (long) io.github.liyughj.xH.rpg.Attribute.AttributeStorage.getAttrValue(weapon,
+            io.github.liyughj.xH.rpg.Attribute.RpgAttribute.GUN_ON_KILL_BUFF_TICKS);
+
+        if (reloadSpeed <= 0 && damageBonus <= 0 && heal <= 0) return false;
+
+        long expireMs = Math.max(1, buffTicks) * 50 + System.currentTimeMillis();
+
+        var meta = weapon.getItemMeta();
+        var pdc = meta.getPersistentDataContainer();
+        if (reloadSpeed > 0)
+            pdc.set(new NamespacedKey("xh", "kill_reload_speed"), PersistentDataType.DOUBLE, reloadSpeed);
+        if (damageBonus > 0)
+            pdc.set(new NamespacedKey("xh", "kill_damage_bonus"), PersistentDataType.DOUBLE, damageBonus);
+        pdc.set(new NamespacedKey("xh", "kill_buff_expire"), PersistentDataType.LONG, expireMs);
+        weapon.setItemMeta(meta);
+
+        // 回血
+        if (heal > 0) {
+            double maxHp = player.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue();
+            player.setHealth(Math.min(player.getHealth() + heal, maxHp));
+        }
+
+        player.sendActionBar(net.kyori.adventure.text.Component.text(
+            "§e☠ 击杀连锁激活! §7换弹+" + (int) reloadSpeed + "% 伤害+" + (int) damageBonus + "%",
+            net.kyori.adventure.text.format.NamedTextColor.GOLD));
+        LoreManager.refreshGunLore(weapon);
+        return true;
+    }
+
     /* ==================== 弹药背包检查 ==================== */
 
     private static final NamespacedKey KEY_GUN_ID = new NamespacedKey("xh", "gun_id");
@@ -564,9 +629,10 @@ public class MagazineManager {
     }
 
     /** 从弹夹物品消耗全部弹药，返回弹种和数量 */
-    private record MagAmmoResult(String ammoType, int count) {}
+    private record MagAmmoResult(String ammoType, int count, String stackData) {}
 
     /** 从弹夹物品中消耗全部子弹，返回弹种ID和消耗数量 */
+    /** 弹夹交换：消耗背包中一个满/非空弹夹物品，返回其弹药数据（同时移除该物品） */
     private static MagAmmoResult consumeFromMagazine(Player player, String caliber) {
         NamespacedKey magCaliberKey = new NamespacedKey("xh", "mag_caliber");
         NamespacedKey magAmmoKey = new NamespacedKey("xh", "mag_ammo");
@@ -585,22 +651,18 @@ public class MagazineManager {
             String ammoType = null;
             if (rawStack != null && !rawStack.isEmpty()) {
                 String[] parts = rawStack.split(",");
-                // 栈顶（最后装的，靠右）决定弹种
                 ammoType = parts[parts.length - 1].trim();
             }
-            // 清空弹夹栈
-            setStringPDC(item, magStackKey, "");
-            setPDC(item, magAmmoKey, 0);
 
-            // 刷新弹夹 lore 显示
-            LoreManager.refreshGunLore(item);
+            // 消耗弹夹物品（整组移除，不是清空 PDC）
+            item.setAmount(item.getAmount() - 1);
 
             if (ammoType == null || ammoType.isEmpty()) {
                 if (GunSystemConfig.ammo() != null) {
                     ammoType = GunSystemConfig.ammo().getDefaultAmmoType(caliber);
                 }
             }
-            return new MagAmmoResult(ammoType, ammo);
+            return new MagAmmoResult(ammoType, ammo, rawStack);
         }
         return null;
     }

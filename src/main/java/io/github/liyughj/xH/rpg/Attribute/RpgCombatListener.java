@@ -35,6 +35,21 @@ public class RpgCombatListener implements Listener {
     /** 枪械弹标记 key（与 GunListener 保持一致） */
     private static final String PDC_GUN_IS_GUN = "gun_is_gun";
 
+    /** 击杀追踪：实体UUID → 最近一次攻击者信息 */
+    private static final java.util.Map<java.util.UUID, KillTrack> killTracker =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static class KillTrack {
+        final java.util.UUID attackerUuid;
+        final org.bukkit.Material weaponMaterial;
+        final boolean isGun;
+        KillTrack(java.util.UUID attackerUuid, org.bukkit.Material weaponMaterial, boolean isGun) {
+            this.attackerUuid = attackerUuid;
+            this.weaponMaterial = weaponMaterial;
+            this.isGun = isGun;
+        }
+    }
+
     public RpgCombatListener(JavaPlugin plugin) {
         this.plugin = plugin;
     }
@@ -270,8 +285,8 @@ public class RpgCombatListener implements Listener {
      *   <li>闪避成功 → 有效命中>0 则 roll 命中穿越判定</li>
      * </ol>
      */
-    private boolean checkDodge(Player attacker, ItemStack attackWeapon, LivingEntity defender,
-                               EntityDamageByEntityEvent event) {
+    /** 供外部射线系统调用的闪避/命中/致盲判定 */
+    public static boolean checkRayDodge(Player attacker, ItemStack attackWeapon, LivingEntity defender) {
         if (!(defender instanceof Player defPlayer)) return false;
 
         java.util.concurrent.ThreadLocalRandom rng = java.util.concurrent.ThreadLocalRandom.current();
@@ -297,33 +312,33 @@ public class RpgCombatListener implements Listener {
         if (effectiveHit < 0) {
             double missChance = Math.abs(effectiveHit);
             missChance = Math.min(100.0, missChance);
-            if (rng.nextDouble() * 100.0 <= missChance) {
-                event.setDamage(0);
-                event.setCancelled(true);
-                return true;
-            }
+            if (rng.nextDouble() * 100.0 <= missChance) return true;
             // 未触发MISS，effectiveHit 仍为负，后续命中穿越不可能成功
         }
 
         /* ——— 防御方闪避（与致盲无关的独立判定） ——— */
         double dodgePct = AttributeStorage.getPlayerAttrRange(defPlayer, RpgAttribute.DODGE).roll();
-
         for (ItemStack armor : defPlayer.getInventory().getArmorContents()) {
             if (armor == null || !armor.hasItemMeta()) continue;
             dodgePct += AttributeStorage.getItemAttrRange(armor, RpgAttribute.DODGE).roll();
         }
         dodgePct = Math.min(100.0, dodgePct);
         if (dodgePct <= 0) return false;
-
         if (rng.nextDouble() * 100.0 > dodgePct) return false; // 未触发闪避
 
         /* 闪避成功 → 命中穿越判定（有效命中>0才可能成功） */
         if (effectiveHit > 0 && rng.nextDouble() * 100.0 <= effectiveHit) return false;
+        return true; // 闪避生效
+    }
 
-        /* 闪避生效 */
-        event.setDamage(0);
-        event.setCancelled(true);
-        return true;
+    private boolean checkDodge(Player attacker, ItemStack attackWeapon, LivingEntity defender,
+                               EntityDamageByEntityEvent event) {
+        if (checkRayDodge(attacker, attackWeapon, defender)) {
+            event.setDamage(0);
+            event.setCancelled(true);
+            return true;
+        }
+        return false;
     }
 
     /* ==================== 近战处理 ==================== */
@@ -530,17 +545,12 @@ public class RpgCombatListener implements Listener {
      * 读取攻击方破甲属性，对目标施加破甲标记。
      * 同时应用目标已有破甲标记的伤害增幅。
      */
-    private void applyArmorBreak(Player attacker, ItemStack weapon, LivingEntity target,
-                                 EntityDamageByEntityEvent event) {
-        /* 先应用目标已有的破甲效果（被破甲的目标受更多伤害） */
+    /** 供外部射线系统调用：应用破甲效果，返回已有破甲的伤害倍率 */
+    public static double applyRayArmorBreak(Player attacker, ItemStack weapon, LivingEntity target) {
         double multiplier = ArmorBreakManager.getDamageMultiplier(target);
-        if (multiplier > 1.0) {
-            event.setDamage(event.getDamage() * multiplier);
-        }
 
-        if (weapon == null || !weapon.hasItemMeta()) return;
+        if (weapon == null || !weapon.hasItemMeta()) return multiplier;
 
-        /* 读取攻击方破甲属性 */
         AttributeRange chanceRange = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.ARMOR_BREAK_CHANCE);
         AttributeRange shallowRange = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.ARMOR_BREAK_SHALLOW);
         AttributeRange mediumRange = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.ARMOR_BREAK_MEDIUM);
@@ -553,45 +563,100 @@ public class RpgCombatListener implements Listener {
         double deep = deepRange.roll();
         long ticks = (long) ticksRange.roll();
 
-        if (chance <= 0 || ticks <= 0) return;
+        if (chance <= 0 || ticks <= 0) return multiplier;
 
         ArmorBreakManager.Debuff before = ArmorBreakManager.getDebuff(target);
-
         ArmorBreakManager.Debuff after = ArmorBreakManager.apply(
-            attacker, target, chance, shallow, medium, deep, ticks
-        );
+            attacker, target, chance, shallow, medium, deep, ticks);
 
-        /* 仅当破甲状态发生变化时发送提示 */
-        if (after == null) return;
+        if (after == null) return multiplier;
 
-        boolean changed;
-        if (before == null) {
-            changed = true; // 新施加
-        } else {
-            changed = before.level != after.level
-                      || before.totalPct != after.totalPct
-                      || !before.breakerUuid.equals(after.breakerUuid);
-        }
+        boolean changed = before == null
+            || before.level != after.level
+            || before.totalPct != after.totalPct
+            || !before.breakerUuid.equals(after.breakerUuid);
 
         if (changed) {
             String targetName = target instanceof Player tp ? tp.getName() : target.getType().name();
-            String degree = after.level.getDisplay();
-            String breakerName = after.breakerName;
+            attacker.sendMessage("§c你使 §e" + targetName + " §c破甲 → 当前程度: §e" + after.level.getDisplay());
+            if (target instanceof Player tp)
+                tp.sendMessage("§c" + after.breakerName + " §c使你破甲 → 当前程度: §e" + after.level.getDisplay());
+        }
+        return multiplier;
+    }
 
-            attacker.sendMessage("§c你使 §e" + targetName + " §c破甲 → 当前程度: §e" + degree);
-            if (target instanceof Player tp) {
-                tp.sendMessage("§c" + breakerName + " §c使你破甲 → 当前程度: §e" + degree);
+    private void applyArmorBreak(Player attacker, ItemStack weapon, LivingEntity target,
+                                 EntityDamageByEntityEvent event) {
+        double multiplier = applyRayArmorBreak(attacker, weapon, target);
+        if (multiplier > 1.0) event.setDamage(event.getDamage() * multiplier);
+    }
+
+    /* ==================== 击杀追踪 ==================== */
+
+    /** MONITOR 优先级：记录所有伤害的最后攻击者，供 EntityDeathEvent 击杀连锁使用 */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onDamageTrackKiller(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof LivingEntity victim)) return;
+        Player attacker = null;
+        org.bukkit.Material weaponMat = null;
+        boolean isGun = false;
+
+        if (event.getDamager() instanceof Player p) {
+            attacker = p;
+            ItemStack weapon = p.getInventory().getItemInMainHand();
+            if (weapon.getType().isItem()) weaponMat = weapon.getType();
+            isGun = io.github.liyughj.xH.gun.GunListener.isGunStatic(weapon);
+        } else if (event.getDamager() instanceof Projectile proj && proj.getShooter() instanceof Player p) {
+            attacker = p;
+            String weaponType = proj.getPersistentDataContainer().get(
+                new NamespacedKey(plugin, PDC_RPG_WEAPON_TYPE), PersistentDataType.STRING);
+            if (weaponType != null) {
+                weaponMat = org.bukkit.Material.getMaterial(weaponType);
             }
+            if (weaponMat == null || !weaponMat.isItem()) {
+                ItemStack mainHand = p.getInventory().getItemInMainHand();
+                weaponMat = mainHand.getType().isItem() ? mainHand.getType() : null;
+            }
+            isGun = proj.getPersistentDataContainer().has(
+                new NamespacedKey(plugin, PDC_GUN_IS_GUN), PersistentDataType.BYTE);
+        }
+
+        if (attacker != null && weaponMat != null) {
+            killTracker.put(victim.getUniqueId(), new KillTrack(attacker.getUniqueId(), weaponMat, isGun));
         }
     }
 
-    /* ==================== 实体死亡清理 ==================== */
+    /* ==================== 实体死亡 ==================== */
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityDeath(EntityDeathEvent event) {
         LivingEntity entity = event.getEntity();
+        // 击杀连锁：枪械击杀时尝试激活buff
+        KillTrack track = killTracker.remove(entity.getUniqueId());
+        if (track != null && track.isGun) {
+            Player killer = org.bukkit.Bukkit.getPlayer(track.attackerUuid);
+            if (killer != null && killer.isOnline()) {
+                // 在玩家背包中查找匹配的枪械物品
+                ItemStack weapon = findMatchingWeapon(killer, track.weaponMaterial);
+                if (weapon != null) {
+                    io.github.liyughj.xH.gun.MagazineManager.tryApplyKillChainBuffs(killer, weapon);
+                }
+            }
+        }
         ArmorBreakManager.remove(entity);
         BlindManager.remove(entity);
+    }
+
+    /** 在玩家主手/副手/背包中查找匹配 Material 的枪械 */
+    private ItemStack findMatchingWeapon(Player player, org.bukkit.Material material) {
+        ItemStack main = player.getInventory().getItemInMainHand();
+        if (main.getType() == material && io.github.liyughj.xH.gun.GunListener.isGunStatic(main)) return main;
+        ItemStack off = player.getInventory().getItemInOffHand();
+        if (off.getType() == material && io.github.liyughj.xH.gun.GunListener.isGunStatic(off)) return off;
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item != null && item.getType() == material && io.github.liyughj.xH.gun.GunListener.isGunStatic(item)) return item;
+        }
+        return null;
     }
 
     /* ==================== 致盲处理 ==================== */
@@ -599,8 +664,8 @@ public class RpgCombatListener implements Listener {
     /**
      * 读取攻击方致盲属性，对目标施加致盲标记。
      */
-    private void applyBlind(Player attacker, ItemStack weapon, LivingEntity target,
-                            EntityDamageByEntityEvent event) {
+    /** 供外部射线系统调用的致盲判定 */
+    public static void applyRayBlind(Player attacker, ItemStack weapon, LivingEntity target) {
         if (weapon == null || !weapon.hasItemMeta()) return;
 
         AttributeRange chanceRange = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.BLIND_CHANCE);
@@ -614,29 +679,26 @@ public class RpgCombatListener implements Listener {
         if (chance <= 0 || efficiency <= 0 || ticks <= 0) return;
 
         BlindManager.Debuff before = BlindManager.getDebuff(target);
-
         BlindManager.Debuff after = BlindManager.apply(
-            attacker, target, chance, efficiency, ticks
-        );
+            attacker, target, chance, efficiency, ticks);
 
-        /* 仅当致盲状态发生变化时发送提示 */
         if (after == null) return;
 
-        boolean changed;
-        if (before == null) {
-            changed = true;
-        } else {
-            changed = before.efficiency != after.efficiency
-                      || !before.breakerName.equals(after.breakerName);
-        }
+        boolean changed = before == null
+            || before.efficiency != after.efficiency
+            || !before.breakerName.equals(after.breakerName);
 
         if (changed) {
             String targetName = target instanceof Player tp ? tp.getName() : target.getType().name();
             attacker.sendMessage("§b你致盲了 §e" + targetName + " §b→ 敌方命中 -" + (int) after.efficiency + "%");
-            if (target instanceof Player tp) {
+            if (target instanceof Player tp)
                 tp.sendMessage("§b" + after.breakerName + " §b致盲了你 → 你的命中 -" + (int) after.efficiency + "%");
-            }
         }
+    }
+
+    private void applyBlind(Player attacker, ItemStack weapon, LivingEntity target,
+                            EntityDamageByEntityEvent event) {
+        applyRayBlind(attacker, weapon, target);
     }
 
     /* ==================== 爆头/部位伤害 ==================== */
@@ -730,7 +792,8 @@ public class RpgCombatListener implements Listener {
     /**
      * 读取枪械属性，对命中目标施加减速/硬直/额外致盲效果。
      */
-    private void applyGunHitEffects(Player shooter, ItemStack weapon, LivingEntity target) {
+    /** 供外部射线系统调用的枪械命中特效（减速/硬直/致盲） */
+    public static void applyGunHitEffects(Player shooter, ItemStack weapon, LivingEntity target) {
         if (weapon == null || !weapon.hasItemMeta()) return;
         java.util.concurrent.ThreadLocalRandom rng = java.util.concurrent.ThreadLocalRandom.current();
 
@@ -765,7 +828,8 @@ public class RpgCombatListener implements Listener {
 
     /* ==================== 吸血回血 ==================== */
 
-    private void applyHeal(Player player, double heal) {
+    /** 供外部射线系统调用的吸血回血 */
+    public static void applyHeal(Player player, double heal) {
         if (heal <= 0) return;
         double maxHealth = player.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue();
         double newHealth = Math.min(maxHealth, player.getHealth() + heal);

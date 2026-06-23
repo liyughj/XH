@@ -48,24 +48,10 @@ public class AmmoConfig {
         calibers.clear();
         ammoTypes.clear();
 
-        // 口径
+        // 口径（支持递归加载兼容旧配置中的点号口径ID）
         ConfigurationSection calibersSection = config.getConfigurationSection("calibers");
         if (calibersSection != null) {
-            for (String id : calibersSection.getKeys(false)) {
-                ConfigurationSection cs = calibersSection.getConfigurationSection(id);
-                if (cs == null) continue;
-                CaliberDef def = new CaliberDef();
-                def.id = id;
-                def.displayName = cs.getString("display_name", id);
-                def.category = cs.getString("category", "rifle");
-                def.stackSize = cs.getInt("stack_size", 64);
-                def.availableTypes = cs.getStringList("available_types");
-                def.defaultType = cs.getString("default_type",
-                    def.availableTypes.isEmpty() ? "fmj" : def.availableTypes.get(0));
-                def.craftBaseMaterial = cs.getString("craft_base_material", "IRON_INGOT");
-                def.craftBaseCount = cs.getInt("craft_base_count", 16);
-                calibers.put(id, def);
-            }
+            loadCalibersRecursive(calibersSection, "");
         }
 
         // 弹种
@@ -98,6 +84,40 @@ public class AmmoConfig {
         plugin.getLogger().info("[弹药] 已加载 " + calibers.size() + " 个口径, " + ammoTypes.size() + " 个弹种");
     }
 
+    /** 将口径ID中的 . 替换为 _（兼容旧YAML中点号路径分裂问题） */
+    static String normalizeCaliberId(String id) {
+        if (id == null) return null;
+        return id.replace('.', '_');
+    }
+
+    /** 递归加载口径：处理旧配置中点号被路径分隔符拆分的情况 */
+    private void loadCalibersRecursive(ConfigurationSection section, String prefix) {
+        for (String key : section.getKeys(false)) {
+            ConfigurationSection cs = section.getConfigurationSection(key);
+            if (cs == null) continue;
+            if (cs.contains("display_name")) {
+                // 叶子节点：这是一个口径定义
+                String fullId = prefix.isEmpty() ? key : prefix + "." + key;
+                String normalizedId = normalizeCaliberId(fullId);
+                CaliberDef def = new CaliberDef();
+                def.id = normalizedId;
+                def.displayName = cs.getString("display_name", normalizedId);
+                def.category = cs.getString("category", "rifle");
+                def.stackSize = cs.getInt("stack_size", 64);
+                def.availableTypes = cs.getStringList("available_types");
+                def.defaultType = cs.getString("default_type",
+                    def.availableTypes.isEmpty() ? "fmj" : def.availableTypes.get(0));
+                def.craftBaseMaterial = cs.getString("craft_base_material", "IRON_INGOT");
+                def.craftBaseCount = cs.getInt("craft_base_count", 16);
+                calibers.put(normalizedId, def);
+            } else {
+                // 中间节点：递归深入（旧配置中被路径分隔符拆分的）
+                String newPrefix = prefix.isEmpty() ? key : prefix + "." + key;
+                loadCalibersRecursive(cs, newPrefix);
+            }
+        }
+    }
+
     /** 获取某个弹种的修正系数，找不到返回 null */
     public AmmoTypeDef getAmmoType(String ammoTypeId) {
         return ammoTypes.get(ammoTypeId);
@@ -105,30 +125,30 @@ public class AmmoConfig {
 
     /** 获取某个口径定义 */
     public CaliberDef getCaliber(String caliberId) {
-        return calibers.get(caliberId);
+        return calibers.get(normalizeCaliberId(caliberId));
     }
 
     /** 获取口径的默认弹种ID */
     public String getDefaultAmmoType(String caliberId) {
-        CaliberDef def = calibers.get(caliberId);
+        CaliberDef def = calibers.get(normalizeCaliberId(caliberId));
         return def != null ? def.defaultType : "fmj";
     }
 
     /** 获取某个口径可用的弹种ID列表 */
     public List<String> getAvailableTypes(String caliberId) {
-        CaliberDef def = calibers.get(caliberId);
+        CaliberDef def = calibers.get(normalizeCaliberId(caliberId));
         return def != null ? new ArrayList<>(def.availableTypes) : Collections.emptyList();
     }
 
     /** 检查某个弹种是否属于某口径 */
     public boolean isTypeAvailableForCaliber(String caliberId, String ammoTypeId) {
-        CaliberDef def = calibers.get(caliberId);
+        CaliberDef def = calibers.get(normalizeCaliberId(caliberId));
         return def != null && def.availableTypes.contains(ammoTypeId);
     }
 
-    public boolean isEnabled() { return enabled; }
-
     public void reload() { loadConfig(); }
+
+    public boolean isEnabled() { return enabled; }
 
     /** 获取所有弹种ID */
     public Set<String> getAllAmmoTypeIds() { return Collections.unmodifiableSet(ammoTypes.keySet()); }
@@ -138,6 +158,7 @@ public class AmmoConfig {
 
     /** 根据口径+弹种ID创建弹药 ItemStack */
     public ItemStack createAmmoItemStack(String caliberId, String ammoTypeId) {
+        caliberId = normalizeCaliberId(caliberId);
         AmmoTypeDef def = ammoTypes.get(ammoTypeId);
         if (def == null) return null;
         Material mat = Material.getMaterial(def.itemMaterial);
@@ -240,63 +261,63 @@ public class AmmoConfig {
         dc.set("calibers.9mm.craft_base_material", "IRON_INGOT");
         dc.set("calibers.9mm.craft_base_count", 32);
 
-        dc.set("calibers..45acp.display_name", ".45 ACP");
-        dc.set("calibers..45acp.category", "pistol");
-        dc.set("calibers..45acp.stack_size", 48);
-        dc.set("calibers..45acp.available_types", Arrays.asList("fmj", "hp", "subsonic", "+p", "match"));
-        dc.set("calibers..45acp.default_type", "fmj");
-        dc.set("calibers..45acp.craft_base_material", "IRON_INGOT");
-        dc.set("calibers..45acp.craft_base_count", 24);
+        dc.set("calibers.45acp.display_name", ".45 ACP");
+        dc.set("calibers.45acp.category", "pistol");
+        dc.set("calibers.45acp.stack_size", 48);
+        dc.set("calibers.45acp.available_types", Arrays.asList("fmj", "hp", "subsonic", "+p", "match"));
+        dc.set("calibers.45acp.default_type", "fmj");
+        dc.set("calibers.45acp.craft_base_material", "IRON_INGOT");
+        dc.set("calibers.45acp.craft_base_count", 24);
 
         // Rifle
-        dc.set("calibers.5.56mm.display_name", "5.56×45mm NATO");
-        dc.set("calibers.5.56mm.category", "rifle");
-        dc.set("calibers.5.56mm.stack_size", 64);
-        dc.set("calibers.5.56mm.available_types", Arrays.asList("fmj", "hp", "ap", "tracer", "incendiary", "subsonic", "match", "rubber"));
-        dc.set("calibers.5.56mm.default_type", "fmj");
-        dc.set("calibers.5.56mm.craft_base_material", "IRON_INGOT");
-        dc.set("calibers.5.56mm.craft_base_count", 20);
+        dc.set("calibers.5_56mm.display_name", "5.56×45mm NATO");
+        dc.set("calibers.5_56mm.category", "rifle");
+        dc.set("calibers.5_56mm.stack_size", 64);
+        dc.set("calibers.5_56mm.available_types", Arrays.asList("fmj", "hp", "ap", "tracer", "incendiary", "subsonic", "match", "rubber"));
+        dc.set("calibers.5_56mm.default_type", "fmj");
+        dc.set("calibers.5_56mm.craft_base_material", "IRON_INGOT");
+        dc.set("calibers.5_56mm.craft_base_count", 20);
 
-        dc.set("calibers.7.62mm.display_name", "7.62×51mm NATO");
-        dc.set("calibers.7.62mm.category", "rifle");
-        dc.set("calibers.7.62mm.stack_size", 48);
-        dc.set("calibers.7.62mm.available_types", Arrays.asList("fmj", "hp", "ap", "tracer", "incendiary", "match"));
-        dc.set("calibers.7.62mm.default_type", "fmj");
-        dc.set("calibers.7.62mm.craft_base_material", "IRON_INGOT");
-        dc.set("calibers.7.62mm.craft_base_count", 16);
+        dc.set("calibers.7_62mm.display_name", "7.62×51mm NATO");
+        dc.set("calibers.7_62mm.category", "rifle");
+        dc.set("calibers.7_62mm.stack_size", 48);
+        dc.set("calibers.7_62mm.available_types", Arrays.asList("fmj", "hp", "ap", "tracer", "incendiary", "match"));
+        dc.set("calibers.7_62mm.default_type", "fmj");
+        dc.set("calibers.7_62mm.craft_base_material", "IRON_INGOT");
+        dc.set("calibers.7_62mm.craft_base_count", 16);
 
-        dc.set("calibers.7.62x39mm.display_name", "7.62×39mm");
-        dc.set("calibers.7.62x39mm.category", "rifle");
-        dc.set("calibers.7.62x39mm.stack_size", 64);
-        dc.set("calibers.7.62x39mm.available_types", Arrays.asList("fmj", "hp", "ap", "tracer", "incendiary", "match"));
-        dc.set("calibers.7.62x39mm.default_type", "fmj");
-        dc.set("calibers.7.62x39mm.craft_base_material", "IRON_INGOT");
-        dc.set("calibers.7.62x39mm.craft_base_count", 20);
+        dc.set("calibers.7_62x39mm.display_name", "7.62×39mm");
+        dc.set("calibers.7_62x39mm.category", "rifle");
+        dc.set("calibers.7_62x39mm.stack_size", 64);
+        dc.set("calibers.7_62x39mm.available_types", Arrays.asList("fmj", "hp", "ap", "tracer", "incendiary", "match"));
+        dc.set("calibers.7_62x39mm.default_type", "fmj");
+        dc.set("calibers.7_62x39mm.craft_base_material", "IRON_INGOT");
+        dc.set("calibers.7_62x39mm.craft_base_count", 20);
 
         // Sniper
-        dc.set("calibers..300win.display_name", ".300 Winchester Magnum");
-        dc.set("calibers..300win.category", "sniper");
-        dc.set("calibers..300win.stack_size", 32);
-        dc.set("calibers..300win.available_types", Arrays.asList("fmj", "hp", "ap", "match", "incendiary"));
-        dc.set("calibers..300win.default_type", "match");
-        dc.set("calibers..300win.craft_base_material", "DIAMOND");
-        dc.set("calibers..300win.craft_base_count", 8);
+        dc.set("calibers.300win.display_name", ".300 Winchester Magnum");
+        dc.set("calibers.300win.category", "sniper");
+        dc.set("calibers.300win.stack_size", 32);
+        dc.set("calibers.300win.available_types", Arrays.asList("fmj", "hp", "ap", "match", "incendiary"));
+        dc.set("calibers.300win.default_type", "match");
+        dc.set("calibers.300win.craft_base_material", "DIAMOND");
+        dc.set("calibers.300win.craft_base_count", 8);
 
-        dc.set("calibers..338lapua.display_name", ".338 Lapua Magnum");
-        dc.set("calibers..338lapua.category", "sniper");
-        dc.set("calibers..338lapua.stack_size", 24);
-        dc.set("calibers..338lapua.available_types", Arrays.asList("fmj", "ap", "match", "incendiary"));
-        dc.set("calibers..338lapua.default_type", "ap");
-        dc.set("calibers..338lapua.craft_base_material", "DIAMOND");
-        dc.set("calibers..338lapua.craft_base_count", 6);
+        dc.set("calibers.338lapua.display_name", ".338 Lapua Magnum");
+        dc.set("calibers.338lapua.category", "sniper");
+        dc.set("calibers.338lapua.stack_size", 24);
+        dc.set("calibers.338lapua.available_types", Arrays.asList("fmj", "ap", "match", "incendiary"));
+        dc.set("calibers.338lapua.default_type", "ap");
+        dc.set("calibers.338lapua.craft_base_material", "DIAMOND");
+        dc.set("calibers.338lapua.craft_base_count", 6);
 
-        dc.set("calibers..50bmg.display_name", ".50 BMG");
-        dc.set("calibers..50bmg.category", "sniper");
-        dc.set("calibers..50bmg.stack_size", 16);
-        dc.set("calibers..50bmg.available_types", Arrays.asList("fmj", "ap", "incendiary", "tracer"));
-        dc.set("calibers..50bmg.default_type", "ap");
-        dc.set("calibers..50bmg.craft_base_material", "NETHERITE_INGOT");
-        dc.set("calibers..50bmg.craft_base_count", 4);
+        dc.set("calibers.50bmg.display_name", ".50 BMG");
+        dc.set("calibers.50bmg.category", "sniper");
+        dc.set("calibers.50bmg.stack_size", 16);
+        dc.set("calibers.50bmg.available_types", Arrays.asList("fmj", "ap", "incendiary", "tracer"));
+        dc.set("calibers.50bmg.default_type", "ap");
+        dc.set("calibers.50bmg.craft_base_material", "NETHERITE_INGOT");
+        dc.set("calibers.50bmg.craft_base_count", 4);
 
         // Shotgun
         dc.set("calibers.12gauge.display_name", "12 Gauge");

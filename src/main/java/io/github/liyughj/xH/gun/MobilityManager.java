@@ -69,6 +69,15 @@ public final class MobilityManager {
         return sprintBlocked.getOrDefault(player.getUniqueId(), false);
     }
 
+    /** 完全移除玩家机动性状态（死亡/退出时调用），恢复默认移速 */
+    static void remove(Player player) {
+        UUID uid = player.getUniqueId();
+        originalWalkSpeed.remove(uid);
+        heldWeapon.remove(uid);
+        sprintBlocked.remove(uid);
+        player.setWalkSpeed(0.2f);
+    }
+
     /* ==================== 内部 ==================== */
 
     private static void refreshPlayerSpeed(Player player) {

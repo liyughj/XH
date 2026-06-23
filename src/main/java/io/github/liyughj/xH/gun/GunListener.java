@@ -16,9 +16,12 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -130,7 +133,7 @@ public class GunListener implements Listener {
         player.setVelocity(vel);
     }
 
-    /* ==================== 丢弃物品 (Q键) → 换弹 ==================== */
+    /* ==================== 丢弃物品 (Q键) → 换弹 / 丢弃 ==================== */
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onDropItem(PlayerDropItemEvent event) {
@@ -138,14 +141,47 @@ public class GunListener implements Listener {
         ItemStack weapon = player.getInventory().getItemInMainHand();
         if (!isGun(weapon)) return;
 
-        // 持枪时按Q始终阻止丢弃，改为触发换弹
+        // 弹夹已满 → 允许丢弃枪械
+        if (MagazineManager.getAmmo(weapon) >= MagazineManager.getCapacity(weapon)) {
+            // 退出开镜/停止全自动，正常丢弃
+            AdsManager.forceExit(player);
+            FireModeManager.stopAuto(player);
+            return;
+        }
+
+        // 弹夹未满 → 阻止丢弃，改为换弹
         event.setCancelled(true);
 
-        // 检查弹夹系统是否启用
         if (!GunSystemConfig.isSystemEnabled(player, "magazine")) return;
 
-        // 开始换弹（内部会停全自动+退开镜）
         MagazineManager.startReload(player, weapon);
+    }
+
+    /* ==================== 死亡/重生/退出 → 清理状态 ==================== */
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onDeath(PlayerDeathEvent event) {
+        Player player = event.getEntity();
+        FireModeManager.stopAuto(player);
+        AdsManager.forceExit(player);
+        AdsManager.remove(player);
+        MobilityManager.remove(player);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        // 重生后确保移速恢复默认
+        player.setWalkSpeed(0.2f);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        FireModeManager.stopAuto(player);
+        AdsManager.forceExit(player);
+        AdsManager.remove(player);
+        MobilityManager.remove(player);
     }
 
     /* ==================== 射击 + 开镜 ==================== */
@@ -476,6 +512,9 @@ public class GunListener implements Listener {
 
             // 部位伤害（与 RpgCombatListener.applyHitzone 逻辑一致）
             finalDmg = applyHitzoneHitscan(player, weapon, target, hitPoint, finalDmg);
+
+            // 击杀连锁伤害加成
+            finalDmg *= MagazineManager.getKillChainDamageFactor(weapon);
 
             target.damage(finalDmg, player);
         }

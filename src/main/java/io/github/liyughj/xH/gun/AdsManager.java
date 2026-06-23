@@ -137,9 +137,10 @@ public final class AdsManager {
              if (s.transitionTimer < s.adsInTicks) {
                  s.transitionTimer++;
                  float progress = s.transitionProgress();
-                 // 移速从原始线性过渡到 adsMoveSpeed
-                 float interp = (float) (1.0 + (s.adsMoveSpeed - 1.0) * progress);
-                 player.setWalkSpeed((float) Math.max(0.02f, s.walkSpeed * interp));
+                 // 从基准移速线性过渡到 adsMoveSpeed（避免与 MobilityManager 循环覆盖）
+                 float target = (float) Math.max(0.02f, s.walkSpeed * s.adsMoveSpeed);
+                 float interp = (float) (s.walkSpeed + (target - s.walkSpeed) * progress);
+                 player.setWalkSpeed((float) Math.max(0.02f, interp));
              }
          }
 
@@ -228,7 +229,7 @@ public final class AdsManager {
         state.transitionTimer = 0;
         state.adsMoveSpeed = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ADS_MOVE_SPEED) / 100.0;
 
-        // 渐入起点：保持当前速度（tick中逐步减速）
+        // 渐入基准速度：当前 MobilityManager 设置的移速（用于退出时恢复）
         state.walkSpeed = player.getWalkSpeed();
 
         player.addPotionEffect(new PotionEffect(
@@ -253,7 +254,25 @@ public final class AdsManager {
         }
         state.thermalTargets.clear();
 
-        player.setWalkSpeed(Math.max(0.05f, state.walkSpeed));
+        player.removePotionEffect(PotionEffectType.SLOWNESS);
+        player.removePotionEffect(PotionEffectType.NIGHT_VISION);
+
+        // 恢复移速到进 ADS 前的值（即 MobilityManager 设置的移速）
+        // 如果玩家已不持枪，则恢复默认值
+        if (GunListener.isGunStatic(player.getInventory().getItemInMainHand())) {
+            player.setWalkSpeed(Math.max(0.05f, state.walkSpeed));
+        } else {
+            player.setWalkSpeed(0.2f);
+        }
+    }
+
+    /** 完全移除玩家 ADS 状态（死亡/退出时调用），不修改移速（由 MobilityManager 处理） */
+    static void remove(Player player) {
+        AdsState state = stateMap.remove(player.getUniqueId());
+        if (state == null) return;
+        for (LivingEntity e : state.thermalTargets) {
+            if (e.isValid()) e.removePotionEffect(PotionEffectType.GLOWING);
+        }
         player.removePotionEffect(PotionEffectType.SLOWNESS);
         player.removePotionEffect(PotionEffectType.NIGHT_VISION);
     }
