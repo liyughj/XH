@@ -222,8 +222,16 @@ public enum RpgAttribute {
     GUN_HEAT_MALFUNCTION_FACTOR("gun_heat_malfunction_factor", "过热故障因子", ValueType.PERCENT, 0.0, 500.0, 300.0, Category.GUN),
     /** 开镜冷却加成（%），开镜时冷却速率的倍率 */
     GUN_HEAT_ADS_COOL_BONUS("gun_heat_ads_cool_bonus", "开镜冷却加成", ValueType.PERCENT, 0.0, 500.0, 150.0, Category.GUN),
-    /** 冒烟热量阈值，热量≥此值时枪口冒烟粒子 */
+    /** 冒烟热量阈值%，热量%≥此值时枪口冒烟粒子 */
     GUN_HEAT_SMOKE_THRESHOLD("gun_heat_smoke_threshold", "冒烟阈值", ValueType.PERCENT, 0.0, 100.0, 60.0, Category.GUN),
+    /** 最大热量，枪械可积累的热量上限 */
+    GUN_HEAT_MAX("gun_heat_max", "最大热量", ValueType.FLAT, 1.0, Double.MAX_VALUE, 100.0, Category.GUN),
+    /** 过热触发百分比，热量%≥此值触发过热（禁止射击+惩罚持续） */
+    GUN_HEAT_OVERHEAT_TRIGGER("gun_heat_overheat_trigger", "过热触发%", ValueType.PERCENT, 0.0, 100.0, 80.0, Category.GUN),
+    /** 故障触发百分比，热量%≥此值才可能触发故障（卡壳/哑火/炸膛） */
+    GUN_HEAT_MALFUNC_TRIGGER("gun_heat_malfunc_trigger", "故障触发%", ValueType.PERCENT, 0.0, 100.0, 50.0, Category.GUN),
+    /** 热量耐久损耗上限，热量100%时每发额外消耗的耐久值 */
+    GUN_HEAT_DURA_LOSS_MAX("gun_heat_dura_loss_max", "热量耐久损耗上限", ValueType.FLAT, 0.0, Double.MAX_VALUE, 0.0, Category.GUN),
 
     /* --- 故障系统 --- */
     /** 基础故障率（%），每发子弹的基准概率 */
@@ -266,23 +274,33 @@ public enum RpgAttribute {
     /** 自动拉栓，1=换弹后自动拉栓 0=需手动 */
     GUN_CHAMBER_AUTO_BOLT("gun_chamber_auto_bolt", "自动拉栓", ValueType.FLAT, 0.0, 1.0, 1.0, Category.GUN),
 
-    /* --- 耐久度系统 --- */
-    /** 耐久上限 */
-    GUN_DURA_MAX("gun_dura_max", "耐久上限", ValueType.FLAT, 0.0, Double.MAX_VALUE, 100.0, Category.GUN),
-    /** 单发射击耐久损耗 */
-    GUN_DURA_LOSS_PER_SHOT("gun_dura_loss_per_shot", "单发耐久损耗", ValueType.FLAT, 0.0, Double.MAX_VALUE, 1.0, Category.GUN),
-    /** 耐久散布惩罚（%），每少1%耐久增加的散布% */
-    GUN_DURA_SPREAD_PENALTY("gun_dura_spread_penalty", "耐久散布惩罚", ValueType.PERCENT, 0.0, 500.0, 100.0, Category.GUN),
-    /** 耐久后坐惩罚（%），每少1%耐久增加的后坐% */
-    GUN_DURA_RECOIL_PENALTY("gun_dura_recoil_penalty", "耐久后坐惩罚", ValueType.PERCENT, 0.0, 500.0, 100.0, Category.GUN),
-    /** 耐久故障惩罚（%），每少1%耐久增加的故障率% */
-    GUN_DURA_MALFUNC_PENALTY("gun_dura_malfunc_penalty", "耐久故障惩罚", ValueType.PERCENT, 0.0, 500.0, 200.0, Category.GUN),
-    /** 耐久警告阈值（%），低于此值时ActionBar警告 */
-    GUN_DURA_WARNING_THRESHOLD("gun_dura_warning_threshold", "耐久警告阈值", ValueType.PERCENT, 0.0, 100.0, 20.0, Category.GUN),
-    /** 破损散布惩罚（%），破损时固定散布扩大百分比 */
-    GUN_DURA_BROKEN_SPREAD_PENALTY("gun_dura_broken_spread_penalty", "破损散布惩罚", ValueType.PERCENT, 0.0, 500.0, 500.0, Category.GUN),
+    /* --- 耐久系统（通用） --- */
+    /** 最大耐久 */
+    ITEM_DURA_MAX("item_dura_max", "最大耐久", ValueType.FLAT, 0.0, Double.MAX_VALUE, 100.0, Category.ORIGINAL_RPG),
+    /** 每次使用消耗的耐久 */
+    ITEM_DURA_LOSS_PER_USE("item_dura_loss_per_use", "耐久消耗", ValueType.FLAT, 0.0, Double.MAX_VALUE, 1.0, Category.ORIGINAL_RPG),
+    /** 耐久消耗系数，>1多消耗 <1少消耗，默认100%=1.0 */
+    ITEM_DURA_CONSUMPTION_COEFFICIENT("item_dura_consumption_coefficient", "耐久消耗系数", ValueType.PERCENT, 0.0, 1000.0, 100.0, Category.ORIGINAL_RPG),
+    /** 耐久阀百分比%，当前耐久%低于此值开始增加负面概率 */
+    ITEM_DURA_THRESHOLD("item_dura_threshold", "耐久阀", ValueType.PERCENT, 0.0, 100.0, 30.0, Category.ORIGINAL_RPG),
+    /** 耐久阀惩罚因子%，每低于阀值1%增加的概率% */
+    ITEM_DURA_THRESHOLD_PENALTY_FACTOR("item_dura_threshold_penalty_factor", "耐久阀惩罚因子", ValueType.PERCENT, 0.0, 1000.0, 200.0, Category.ORIGINAL_RPG),
+    /** 修复系数因子%，每次维修增加的消耗系数% */
+    ITEM_DURA_REPAIR_COEFFICIENT_FACTOR("item_dura_repair_coefficient_factor", "修复系数因子", ValueType.PERCENT, 0.0, 1000.0, 0.0, Category.ORIGINAL_RPG),
+    /** 耐久警告阈值%，低于此值时ActionBar警告 */
+    ITEM_DURA_WARNING_THRESHOLD("item_dura_warning_threshold", "耐久警告阈值", ValueType.PERCENT, 0.0, 100.0, 20.0, Category.ORIGINAL_RPG),
+    /** 耐久散布惩罚%，每少1%耐久增加的散布% */
+    ITEM_DURA_SPREAD_PENALTY("item_dura_spread_penalty", "耐久散布惩罚", ValueType.PERCENT, 0.0, 500.0, 100.0, Category.ORIGINAL_RPG),
+    /** 耐久后坐惩罚%，每少1%耐久增加的后坐% */
+    ITEM_DURA_RECOIL_PENALTY("item_dura_recoil_penalty", "耐久后坐惩罚", ValueType.PERCENT, 0.0, 500.0, 100.0, Category.ORIGINAL_RPG),
+    /** 破损散布惩罚%，破损时固定散布扩大百分比 */
+    ITEM_DURA_BROKEN_SPREAD_PENALTY("item_dura_broken_spread_penalty", "破损散布惩罚", ValueType.PERCENT, 0.0, 500.0, 500.0, Category.ORIGINAL_RPG),
     /** 破损后可修复，1=可修复 0=永久报废 */
-    GUN_DURA_BROKEN_REPAIRABLE("gun_dura_broken_repairable", "破损可修复", ValueType.FLAT, 0.0, 1.0, 1.0, Category.GUN),
+    ITEM_DURA_BROKEN_REPAIRABLE("item_dura_broken_repairable", "破损可修复", ValueType.FLAT, 0.0, 1.0, 1.0, Category.ORIGINAL_RPG),
+    /** 修理成本 */
+    ITEM_DURA_REPAIR_COST("item_dura_repair_cost", "修理成本", ValueType.FLAT, 0.0, 64.0, 8.0, Category.ORIGINAL_RPG),
+    /** 修理材料 */
+    ITEM_DURA_REPAIR_MATERIAL("item_dura_repair_material", "修理材料", ValueType.FLAT, 0.0, 12.0, 0.0, Category.ORIGINAL_RPG),
 
     /* --- 穿透系统 --- */
     /** 穿透层数，可穿透的最大实体数 */
@@ -528,10 +546,6 @@ public enum RpgAttribute {
 
     /* ── 耐久补充 ── */
     /** 修理所需材料数量 */
-    GUN_DURA_REPAIR_COST("gun_dura_repair_cost", "修理成本", ValueType.FLAT, 0.0, 64.0, 8.0, Category.GUN),
-    /** 修理材料 ID（Material 名称），如 IRON_INGOT */
-    GUN_DURA_REPAIR_MATERIAL("gun_dura_repair_material", "修理材料", ValueType.FLAT, 0.0, 12.0, 0.0, Category.GUN),
-
     /* ── 配件槽位 ── */
     /** 可用配件槽位 bitmask：bit0=muzzle bit1=optic bit2=grip bit3=mag bit4=stock bit5=laser bit6=trigger */
     GUN_ATTACHMENT_SLOTS("gun_attachment_slots", "配件槽位", ValueType.FLAT, 0.0, 127.0, 127.0, Category.GUN),

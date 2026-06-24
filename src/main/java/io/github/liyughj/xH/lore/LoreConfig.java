@@ -150,7 +150,8 @@ public final class LoreConfig {
             // 爆头
             "gun_headshot_chance", "gun_headshot_multiplier",
             // 过热
-            "gun_heat_threshold", "gun_heat_cool_rate",
+            "gun_heat_max", "gun_heat_per_shot", "gun_heat_cool_rate",
+            "gun_heat_overheat_trigger", "gun_heat_malfunc_trigger", "gun_heat_dura_loss_max",
             // 故障
             "gun_malfunc_base_chance",
             // 人体工学
@@ -170,7 +171,7 @@ public final class LoreConfig {
             // 压制
             "gun_suppress_radius", "gun_suppress_amount",
             // 耐久（仅消耗，当前/最大由 _gun_dura 状态行替代）
-            "gun_dura_loss_per_shot"
+            "item_dura_loss_per_use"
         ));
         // --- 弹药状态（动态） ---
         dc.set("gun._mag_ammo",        "&7弹药: &f{mag_ammo}&7/&f{mag_capacity}");
@@ -205,8 +206,12 @@ public final class LoreConfig {
         dc.set("gun.gun_headshot_chance", "&7爆头率:     &e{value}");
         dc.set("gun.gun_headshot_multiplier",   "&7爆头倍率:   &e{value}");
         // --- 过热 ---
-        dc.set("gun.gun_heat_threshold",  "&7过热阈值:   &c{value}热量");
+        dc.set("gun.gun_heat_max",       "&7最大热量:   &c{value}");
+        dc.set("gun.gun_heat_per_shot",  "&7单发热量:   &c{value}");
         dc.set("gun.gun_heat_cool_rate",  "&7冷却速率:   &b{value}/秒");
+        dc.set("gun.gun_heat_overheat_trigger","&7过热触发:   &e{value}");
+        dc.set("gun.gun_heat_malfunc_trigger","&7故障触发:   &e{value}");
+        dc.set("gun.gun_heat_dura_loss_max","&7热量损耐:   &7{value}");
         // --- 故障 ---
         dc.set("gun.gun_malfunc_base_chance","&7故障率:    &c{value}");
         // --- 人体工学 ---
@@ -246,7 +251,7 @@ public final class LoreConfig {
         dc.set("gun.gun_suppress_radius",   "&7压制范围:   &e{value}格");
         dc.set("gun.gun_suppress_amount",   "&7压制强度:   &c{value}");
         // --- 耐久 ---
-        dc.set("gun.gun_dura_loss_per_shot","&7耐久消耗:   &7{value}/发");
+        dc.set("gun.item_dura_loss_per_use","&7耐久消耗:   &7{value}/次");
         // gun_dura_max 已整合到状态行 _gun_dura 中，不再单独显示
 
         // --- 武器 / RPG ---

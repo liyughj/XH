@@ -3,7 +3,7 @@ package io.github.liyughj.xH.lore;
 import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
-import io.github.liyughj.xH.gun.DurabilityManager;
+import io.github.liyughj.xH.specialEvent.DurabilitySystem;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -324,11 +324,11 @@ public final class LoreManager {
                         ? chamberAmmo : "&7-";
                 }
                 case "gun_dura" -> {
-                    double dura = DurabilityManager.getDurability(item);
+                    double dura = DurabilitySystem.getDurability(item);
                     replacement = String.valueOf(Math.round(dura));
                 }
                 case "gun_dura_max" -> {
-                    double maxDura = AttributeStorage.getAttrValue(item, RpgAttribute.GUN_DURA_MAX);
+                    double maxDura = AttributeStorage.getAttrValue(item, RpgAttribute.ITEM_DURA_MAX);
                     replacement = String.valueOf(Math.round(maxDura));
                 }
                 case "rpg" -> {

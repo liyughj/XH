@@ -268,16 +268,19 @@ public class GunItemConfig {
             "  gun_burst_interval_ms      连发间隔（ms）",
             "  gun_auto_trigger_delay_ms  全自动首发延迟（ms  0=立即）",
             "",
-            "--- 过热系统 ---",
-            "  gun_heat_per_shot               单发热量",
-            "  gun_heat_threshold              过热阈值",
-            "  gun_heat_cool_rate              冷却速率（/秒）",
-            "  gun_heat_overheat_penalty_ticks 过热惩罚持续（tick）",
-            "  gun_heat_spread_factor          过热散布因子（%）",
-            "  gun_heat_recoil_factor          过热后坐因子（%）",
-            "  gun_heat_malfunction_factor     过热故障因子（%）",
-            "  gun_heat_ads_cool_bonus         开镜冷却加成（%）",
-            "  gun_heat_smoke_threshold        冒烟热量阈值（%）",
+            "--- 热量系统 ---",
+            "  gun_heat_max                             最大热量",
+            "  gun_heat_per_shot                        单发热量（热量系数）",
+            "  gun_heat_cool_rate                       冷却速率/秒（冷却系数）",
+            "  gun_heat_ads_cool_bonus                  开镜冷却加成（%）",
+            "  gun_heat_smoke_threshold                 冒烟热量阈值（%）",
+            "  gun_heat_overheat_trigger     过热触发%（热量≥此%触发过热）",
+            "  gun_heat_overheat_penalty_ticks          过热惩罚持续（tick）",
+            "  gun_heat_malfunc_trigger     故障触发%（热量≥此%才可能故障）",
+            "  gun_heat_dura_loss_max       热量耐久损耗上限（100%热量时额外损耗）",
+            "  gun_heat_spread_factor                   过热散布因子（%）",
+            "  gun_heat_recoil_factor                   过热后坐因子（%）",
+            "  gun_heat_malfunction_factor              过热故障因子（%）",
             "",
             "--- 故障系统 ---",
             "  gun_malfunc_base_chance     基础故障率（%）",
@@ -305,15 +308,20 @@ public class GunItemConfig {
             "  gun_chamber_bolt_ticks         拉栓时间（tick）",
             "  gun_chamber_auto_bolt               自动拉栓（1=启用）",
             "",
-            "--- 耐久度系统 ---",
-            "  gun_dura_max                      耐久上限",
-            "  gun_dura_loss_per_shot            单发耐久损耗",
-            "  gun_dura_spread_penalty           耐久散布惩罚（%）",
-            "  gun_dura_recoil_penalty           耐久后坐惩罚（%）",
-            "  gun_dura_malfunc_penalty          耐久故障惩罚（%）",
-            "  gun_dura_warning_threshold        耐久警告阈值（%）",
-            "  gun_dura_broken_spread_penalty    破损散布惩罚（%）",
-            "  gun_dura_broken_repairable        破损可修复（1=可修复）",
+            "--- 耐久系统 ---",
+            "  item_dura_max                              最大耐久",
+            "  item_dura_loss_per_use                     耐久消耗",
+            "  item_dura_consumption_coefficient          耐久消耗系数（%  默认100=1.0）",
+            "  item_dura_threshold                        耐久阀（%）",
+            "  item_dura_threshold_penalty_factor         耐久阀惩罚因子（%）",
+            "  item_dura_repair_coefficient_factor        修复系数因子（%）",
+            "  item_dura_warning_threshold                警告阈值（%）",
+            "  item_dura_spread_penalty                   耐久散布惩罚（%）",
+            "  item_dura_recoil_penalty                   耐久后坐惩罚（%）",
+            "  item_dura_broken_spread_penalty            破损散布惩罚（%）",
+            "  item_dura_broken_repairable                破损可修复（1=可修复）",
+            "  item_dura_repair_cost                     修理成本",
+            "  item_dura_repair_material                 修理材料",
             "",
             "--- 穿透系统 ---",
             "  gun_penetration_count          穿透层数",
@@ -712,12 +720,12 @@ public class GunItemConfig {
         dc.set("items.DIAMOND_HOE.gun_penetration_falloff", 35);
 
         /* ---- 耐久系统 ---- */
-        dc.set("items.IRON_HOE.gun_dura_max", 500);
-        dc.set("items.IRON_HOE.gun_dura_loss_per_shot", 1);
-        dc.set("items.DIAMOND_HOE.gun_dura_max", 600);
-        dc.set("items.DIAMOND_HOE.gun_dura_loss_per_shot", 1);
-        dc.set("items.NETHERITE_HOE.gun_dura_max", 300);
-        dc.set("items.NETHERITE_HOE.gun_dura_loss_per_shot", 2);
+        dc.set("items.IRON_HOE.item_dura_max", 500);
+        dc.set("items.IRON_HOE.item_dura_loss_per_use", 1);
+        dc.set("items.DIAMOND_HOE.item_dura_max", 600);
+        dc.set("items.DIAMOND_HOE.item_dura_loss_per_use", 1);
+        dc.set("items.NETHERITE_HOE.item_dura_max", 300);
+        dc.set("items.NETHERITE_HOE.item_dura_loss_per_use", 2);
 
         /* ---- 人体工学 ---- */
         dc.set("items.IRON_HOE.gun_equip_ticks", 6);
@@ -809,8 +817,8 @@ public class GunItemConfig {
         dc.set("items.NETHERITE_HOE.gun_suppress_duration_ticks", 60);
 
         /* ---- 耐久补充 ---- */
-        dc.set("items.NETHERITE_HOE.gun_dura_repair_cost", 3);
-        dc.set("items.NETHERITE_HOE.gun_dura_repair_material", "IRON_INGOT");
+        dc.set("items.NETHERITE_HOE.item_dura_repair_cost", 3);
+        dc.set("items.NETHERITE_HOE.item_dura_repair_material", "IRON_INGOT");
 
         /* ---- 配件槽位 ---- */
         dc.set("items.IRON_HOE.gun_attachment_slots", 11);    // muzzle(1)+optic(2)+mag(8) = 11
@@ -949,9 +957,9 @@ public class GunItemConfig {
         item.setItemMeta(meta);
 
         // 初始化耐久
-        double maxDura = AttributeStorage.getAttrValue(item, RpgAttribute.GUN_DURA_MAX);
+        double maxDura = AttributeStorage.getAttrValue(item, RpgAttribute.ITEM_DURA_MAX);
         if (maxDura > 0) {
-            DurabilityManager.setDurability(item, maxDura);
+            io.github.liyughj.xH.specialEvent.DurabilitySystem.setDurability(item, maxDura);
         }
 
         // 应用 LoreManager 模板生成 lore

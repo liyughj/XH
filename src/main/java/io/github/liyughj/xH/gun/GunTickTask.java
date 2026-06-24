@@ -28,7 +28,7 @@ public final class GunTickTask {
 
                     ItemStack weapon = player.getInventory().getItemInMainHand();
 
-                    OverheatManager.doCool(player, GunListener.isGunStatic(weapon) ? weapon : null);
+                    io.github.liyughj.xH.specialEvent.HeatSystem.doCool(player, GunListener.isGunStatic(weapon) ? weapon : null);
 
                     if (!GunListener.isGunStatic(weapon)) continue;
 
@@ -40,8 +40,8 @@ public final class GunTickTask {
                     if (GunSystemConfig.isSystemEnabled(player, "overheat")) {
                         double smokeThreshold = io.github.liyughj.xH.rpg.Attribute.AttributeStorage
                             .getAttrValue(weapon, io.github.liyughj.xH.rpg.Attribute.RpgAttribute.GUN_HEAT_SMOKE_THRESHOLD);
-                        double heatPct = OverheatManager.getHeatPercent(player, weapon);
-                        if (smokeThreshold > 0 && heatPct >= smokeThreshold) {
+                        double heatPct = io.github.liyughj.xH.specialEvent.HeatSystem.getHeatPercent(player, weapon);
+                        if (smokeThreshold > 0 && heatPct * 100 >= smokeThreshold) {
                             player.getWorld().spawnParticle(
                                 Particle.SMOKE,
                                 player.getEyeLocation().add(player.getLocation().getDirection().multiply(1.2)),

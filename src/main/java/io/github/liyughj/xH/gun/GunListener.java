@@ -167,6 +167,8 @@ public class GunListener implements Listener {
         AdsManager.forceExit(player);
         AdsManager.remove(player);
         MobilityManager.remove(player);
+        io.github.liyughj.xH.specialEvent.HeatSystem.remove(player);
+        MalfunctionManager.remove(player);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -183,6 +185,8 @@ public class GunListener implements Listener {
         AdsManager.forceExit(player);
         AdsManager.remove(player);
         MobilityManager.remove(player);
+        io.github.liyughj.xH.specialEvent.HeatSystem.remove(player);
+        MalfunctionManager.remove(player);
     }
 
     /* ==================== 射击 + 开镜 ==================== */
@@ -378,7 +382,7 @@ public class GunListener implements Listener {
         }
 
         /* ── 2. [过热] 热量检查 ── */
-        if (needsOverheatCheck && OverheatManager.addHeat(player, weapon)) return false;
+        if (needsOverheatCheck && io.github.liyughj.xH.specialEvent.HeatSystem.onShoot(player, weapon)) return false;
 
         /* ── 3. [故障] 故障检查 ── */
         if (needsStandardCheck) {
@@ -390,7 +394,7 @@ public class GunListener implements Listener {
 
         /* ── 4. [耐久] 先检查再消耗弹药，避免子弹浪费 ── */
         if (needsStandardCheck) {
-            if (DurabilityManager.shootLoss(player, weapon)) return false;
+            if (io.github.liyughj.xH.specialEvent.DurabilitySystem.shootLoss(player, weapon)) return false;
         }
 
         /* ── 5. [弹夹/枪膛] 消耗 ── */

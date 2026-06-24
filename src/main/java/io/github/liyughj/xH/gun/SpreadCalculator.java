@@ -43,8 +43,8 @@ public final class SpreadCalculator {
         double spreadDeg = SpreadManager.consumeSpread(player, weapon);
 
         /* —— 过热/耐久/弹药修正 —— */
-        spreadDeg *= OverheatManager.getSpreadMultiplier(player, weapon);
-        spreadDeg *= DurabilityManager.getSpreadPenalty(player, weapon);
+        spreadDeg *= io.github.liyughj.xH.specialEvent.HeatSystem.getSpreadMultiplier(player, weapon);
+        spreadDeg *= io.github.liyughj.xH.specialEvent.DurabilitySystem.getSpreadPenalty(player, weapon);
         // 弹药修正
         AmmoConfig.AmmoTypeDef ammo = MagazineManager.getCurrentAmmoType(weapon);
         if (ammo != null) spreadDeg *= ammo.spreadMult;

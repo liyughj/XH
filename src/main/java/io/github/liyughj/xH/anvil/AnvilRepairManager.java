@@ -1,6 +1,6 @@
 package io.github.liyughj.xH.anvil;
 
-import io.github.liyughj.xH.gun.DurabilityManager;
+import io.github.liyughj.xH.specialEvent.DurabilitySystem;
 import io.github.liyughj.xH.gun.GunListener;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
@@ -112,10 +112,10 @@ public class AnvilRepairManager {
         if (!GunListener.isGunStatic(gun)) return gun;
 
         // 检查破损后是否可修复
-        double currentDura = DurabilityManager.getDurability(gun);
+        double currentDura = DurabilitySystem.getDurability(gun);
         if (currentDura <= 0) {
             double repairable = io.github.liyughj.xH.rpg.Attribute.AttributeStorage
-                .getAttrValue(gun, io.github.liyughj.xH.rpg.Attribute.RpgAttribute.GUN_DURA_BROKEN_REPAIRABLE);
+                .getAttrValue(gun, io.github.liyughj.xH.rpg.Attribute.RpgAttribute.ITEM_DURA_BROKEN_REPAIRABLE);
             if (repairable < 1.0) {
                 player.sendActionBar(net.kyori.adventure.text.Component.text(
                     "该武器已永久损坏!", net.kyori.adventure.text.format.NamedTextColor.DARK_RED));
@@ -126,13 +126,13 @@ public class AnvilRepairManager {
         RepairMaterialConfig cfg = getRepairMaterial(repairItem.getType(), gun);
         if (cfg == null) return gun;
 
-        double max = DurabilityManager.getMaxDurability(gun);
+        double max = DurabilitySystem.getMaxDurability(gun);
 
         if (cfg.perfectRepair) {
-            DurabilityManager.setDurability(gun, max);
+            DurabilitySystem.setDurability(gun, max);
         } else {
             double amount = cfg.repairPerItem;
-            DurabilityManager.repair(gun, amount);
+            DurabilitySystem.repair(gun, amount);
         }
 
         return gun;

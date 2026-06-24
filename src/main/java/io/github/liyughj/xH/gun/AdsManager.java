@@ -102,7 +102,7 @@ public final class AdsManager {
         }
     }
 
-    static boolean isActive(Player player) {
+    public static boolean isActive(Player player) {
         AdsState s = stateMap.get(player.getUniqueId());
         return s != null && s.active;
     }

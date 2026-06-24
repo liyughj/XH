@@ -59,6 +59,9 @@ public class MalfunctionManager {
         double cooldownTicks = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_MALFUNC_COOLDOWN_TICKS);
         if (state.lastMalfuncTick > 0 && (now - state.lastMalfuncTick) < cooldownTicks) return null;
 
+        // 热量门控：热量%未达到故障触发阈值则不roll故障
+        if (!io.github.liyughj.xH.specialEvent.HeatSystem.canMalfunction(player, weapon)) return null;
+
         // 计算故障率
         double chance = calcMalfuncChance(player, weapon);
         if (Math.random() * 100 >= chance) return null;
@@ -84,9 +87,9 @@ public class MalfunctionManager {
             case CATASTROPHIC:
                 double cataDamage = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_MALFUNC_CATA_DAMAGE);
                 player.damage(cataDamage);
-                // 耐久损失在 DurabilityManager 中处理
+                // 耐久损失在 DurabilitySystem 中处理
                 double duraLoss = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_MALFUNC_CATA_DURA_LOSS);
-                DurabilityManager.loseDurability(player, weapon, duraLoss);
+                io.github.liyughj.xH.specialEvent.DurabilitySystem.loseDurability(player, weapon, duraLoss);
                 player.playSound(player.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 0.6f, 0.5f);
                 player.sendActionBar(net.kyori.adventure.text.Component.text(
                     "炸膛!", net.kyori.adventure.text.format.NamedTextColor.DARK_RED));
@@ -106,20 +109,20 @@ public class MalfunctionManager {
         }
         chance += globalBase;
 
-        // 热量加成（过热系统的因子 + 故障系统自身的因子 叠加）
-        chance += OverheatManager.getMalfunctionBonus(player, weapon);
+        // 热量加成
+        chance += io.github.liyughj.xH.specialEvent.HeatSystem.getMalfunctionBonus(player, weapon);
         double malfuncHeatFactor = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_MALFUNC_HEAT_FACTOR);
         if (malfuncHeatFactor > 0) {
-            double heatPct = OverheatManager.getHeatPercent(player, weapon);
+            double heatPct = io.github.liyughj.xH.specialEvent.HeatSystem.getHeatPercent(player, weapon);
             chance += heatPct * (malfuncHeatFactor / 100.0);
         }
 
-        // 耐久加成（使用两个独立因子叠加）
-        double duraPct = DurabilityManager.getDurabilityPercent(player, weapon);
+        // 耐久加成（耐久阀系统 + 故障系统自身的耐久因子 叠加）
+        double duraPct = io.github.liyughj.xH.specialEvent.DurabilitySystem.getDurabilityPercent(player, weapon);
         double duraFactor = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_MALFUNC_DURA_FACTOR);
         chance += Math.max(0, (1.0 - duraPct)) * 100.0 * (duraFactor / 100.0);
-        double malfuncDuraPenalty = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_DURA_MALFUNC_PENALTY);
-        chance += Math.max(0, (1.0 - duraPct)) * malfuncDuraPenalty / 100.0;
+        // 耐久阀故障加成
+        chance += io.github.liyughj.xH.specialEvent.DurabilitySystem.getDurabilityMalfunctionBonus(player, weapon);
 
         return Math.min(chance, 100);
     }

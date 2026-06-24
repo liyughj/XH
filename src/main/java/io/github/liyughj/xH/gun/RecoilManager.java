@@ -192,8 +192,8 @@ public final class RecoilManager {
         }
 
         /* —— 过热/耐久/弹药修正 —— */
-        mul *= OverheatManager.getRecoilMultiplier(player, weapon);
-        mul *= DurabilityManager.getRecoilPenalty(player, weapon);
+        mul *= io.github.liyughj.xH.specialEvent.HeatSystem.getRecoilMultiplier(player, weapon);
+        mul *= io.github.liyughj.xH.specialEvent.DurabilitySystem.getRecoilPenalty(player, weapon);
         AmmoConfig.AmmoTypeDef ammo = MagazineManager.getCurrentAmmoType(weapon);
         if (ammo != null) mul *= ammo.recoilMult;
 
