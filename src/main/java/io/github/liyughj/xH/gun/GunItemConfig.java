@@ -250,13 +250,13 @@ public class GunItemConfig {
             "",
             "--- 爆头/部位伤害 ---",
             "  gun_headshot_chance       爆头概率（%）",
-            "  gun_headshot_mult         爆头倍率（%）",
+            "  gun_headshot_multiplier         爆头倍率（%）",
             "  gun_upper_chance          上肢概率（%）",
-            "  gun_upper_mult            上肢倍率（%）",
+            "  gun_upper_multiplier            上肢倍率（%）",
             "  gun_lower_chance          下身概率（%）",
-            "  gun_lower_mult            下身倍率（%）",
+            "  gun_lower_multiplier            下身倍率（%）",
             "  gun_leg_chance            腿部概率（%）",
-            "  gun_leg_mult              腿部倍率（%）",
+            "  gun_leg_multiplier              腿部倍率（%）",
             "  gun_headshot_threshold    爆头阈值（%）",
             "  gun_body_threshold        上身阈值（%）",
             "  gun_leg_threshold         腿部阈值（%）",
@@ -290,8 +290,8 @@ public class GunItemConfig {
             "",
             "--- 弹夹系统 ---",
             "  gun_mag_capacity            弹夹容量",
-            "  gun_reload_time_ticks       换弹时间（tick）",
-            "  gun_reload_empty_time_ticks 空仓换弹时间（tick）",
+            "  gun_reload_ticks       换弹时间（tick）",
+            "  gun_reload_empty_ticks 空仓换弹时间（tick）",
             "  gun_reload_staged           分段换弹（tick）",
             "  gun_auto_reload             自动换弹（1=启用）",
             "  gun_reload_interruptible    换弹可中断（1=允许）",
@@ -302,7 +302,7 @@ public class GunItemConfig {
             "--- 枪膛系统 ---",
             "  gun_chamber_enabled                 枪膛开关（1=启用）",
             "  gun_chamber_tactical_reload_bonus   战术换弹加成（%）",
-            "  gun_chamber_bolt_time_ticks         拉栓时间（tick）",
+            "  gun_chamber_bolt_ticks         拉栓时间（tick）",
             "  gun_chamber_auto_bolt               自动拉栓（1=启用）",
             "",
             "--- 耐久度系统 ---",
@@ -346,7 +346,7 @@ public class GunItemConfig {
             "  bleed_chance                 流血概率（%，通用）",
             "  bleed_damage                 流血伤害（HP/tick，通用）",
             "  bleed_ticks                  流血持续（tick，通用）",
-            "  gun_crossbow_headshot_mult   弩爆头倍率（%）",
+            "  gun_crossbow_headshot_multiplier   弩爆头倍率（%）",
             "",
             "--- 特殊武器：喷火器 ---",
             "  gun_flame_damage_per_tick    火焰伤害",
@@ -391,11 +391,11 @@ public class GunItemConfig {
             "  gun_laser_pierce             穿透实体（1=可穿透）",
             "",
             "--- 人体工学 ---",
-            "  gun_equip_time_ticks         切枪掏出耗时（tick）",
-            "  gun_holster_time_ticks       收枪耗时（tick）",
+            "  gun_equip_ticks         切枪掏出耗时（tick）",
+            "  gun_holster_ticks       收枪耗时（tick）",
             "  gun_sprint_to_fire_ticks     疾跑→可开火延迟（tick）",
-            "  gun_ads_in_time_ticks        开镜渐入时间（tick）",
-            "  gun_ads_out_time_ticks       关镜渐出时间（tick）",
+            "  gun_ads_in_ticks        开镜渐入时间（tick）",
+            "  gun_ads_out_ticks       关镜渐出时间（tick）",
             "  gun_weapon_swap_speed        切枪速度（100=正常）",
             "",
             "--- 机动性 ---",
@@ -406,7 +406,6 @@ public class GunItemConfig {
             "  gun_can_sprint               允许疾跑（1=允许 0=禁止）",
             "",
             "--- 开镜高级属性 ---",
-            "  gun_ads_sensitivity          开镜灵敏度",
             "  gun_ads_sway_amount          开镜晃动（%越大散布越大）",
              "  gun_ads_breath_max           呼吸值上限（默认100）",
              "  gun_ads_breath_drain         屏息消耗/tick",
@@ -444,7 +443,6 @@ public class GunItemConfig {
             "  gun_shell_material           弹壳材质（Material名称）",
             "  gun_hit_marker_type          命中标记（0=默认 1=十字 2=圆圈 3=菱形）",
             "  gun_hit_marker_kill          击杀标记（0=默认 1=特殊音效 2=粒子）",
-            "  gun_inspect_ticks            检视时长（tick）",
             "",
             "--- 压制系统 ---",
             "  gun_suppress_radius          压制范围（格）",
@@ -516,13 +514,13 @@ public class GunItemConfig {
         dc.set("items.IRON_HOE.gun_recoil_view_kick", 0.5);
         /* 爆头/部位 */
         dc.set("items.IRON_HOE.gun_headshot_chance", 100);
-        dc.set("items.IRON_HOE.gun_headshot_mult", 200);
+        dc.set("items.IRON_HOE.gun_headshot_multiplier", 200);
         dc.set("items.IRON_HOE.gun_upper_chance", 100);
-        dc.set("items.IRON_HOE.gun_upper_mult", 100);
+        dc.set("items.IRON_HOE.gun_upper_multiplier", 100);
         dc.set("items.IRON_HOE.gun_lower_chance", 100);
-        dc.set("items.IRON_HOE.gun_lower_mult", 100);
+        dc.set("items.IRON_HOE.gun_lower_multiplier", 100);
         dc.set("items.IRON_HOE.gun_leg_chance", 100);
-        dc.set("items.IRON_HOE.gun_leg_mult", 70);
+        dc.set("items.IRON_HOE.gun_leg_multiplier", 70);
         dc.set("items.IRON_HOE.gun_headshot_threshold", 85);
         dc.set("items.IRON_HOE.gun_body_threshold", 50);
         dc.set("items.IRON_HOE.gun_leg_threshold", 20);
@@ -569,13 +567,13 @@ public class GunItemConfig {
         dc.set("items.DIAMOND_HOE.gun_recoil_view_kick", 1.0);
         /* 爆头/部位 */
         dc.set("items.DIAMOND_HOE.gun_headshot_chance", 100);
-        dc.set("items.DIAMOND_HOE.gun_headshot_mult", 200);
+        dc.set("items.DIAMOND_HOE.gun_headshot_multiplier", 200);
         dc.set("items.DIAMOND_HOE.gun_upper_chance", 100);
-        dc.set("items.DIAMOND_HOE.gun_upper_mult", 100);
+        dc.set("items.DIAMOND_HOE.gun_upper_multiplier", 100);
         dc.set("items.DIAMOND_HOE.gun_lower_chance", 100);
-        dc.set("items.DIAMOND_HOE.gun_lower_mult", 100);
+        dc.set("items.DIAMOND_HOE.gun_lower_multiplier", 100);
         dc.set("items.DIAMOND_HOE.gun_leg_chance", 100);
-        dc.set("items.DIAMOND_HOE.gun_leg_mult", 70);
+        dc.set("items.DIAMOND_HOE.gun_leg_multiplier", 70);
         dc.set("items.DIAMOND_HOE.gun_headshot_threshold", 85);
         dc.set("items.DIAMOND_HOE.gun_body_threshold", 50);
         dc.set("items.DIAMOND_HOE.gun_leg_threshold", 20);
@@ -622,13 +620,13 @@ public class GunItemConfig {
         dc.set("items.NETHERITE_HOE.gun_recoil_view_kick", 1.5);
         /* 爆头/部位（狙击：爆头率60%，3倍伤害） */
         dc.set("items.NETHERITE_HOE.gun_headshot_chance", 60);
-        dc.set("items.NETHERITE_HOE.gun_headshot_mult", 300);
+        dc.set("items.NETHERITE_HOE.gun_headshot_multiplier", 300);
         dc.set("items.NETHERITE_HOE.gun_upper_chance", 100);
-        dc.set("items.NETHERITE_HOE.gun_upper_mult", 120);
+        dc.set("items.NETHERITE_HOE.gun_upper_multiplier", 120);
         dc.set("items.NETHERITE_HOE.gun_lower_chance", 100);
-        dc.set("items.NETHERITE_HOE.gun_lower_mult", 100);
+        dc.set("items.NETHERITE_HOE.gun_lower_multiplier", 100);
         dc.set("items.NETHERITE_HOE.gun_leg_chance", 40);
-        dc.set("items.NETHERITE_HOE.gun_leg_mult", 50);
+        dc.set("items.NETHERITE_HOE.gun_leg_multiplier", 50);
         dc.set("items.NETHERITE_HOE.gun_headshot_threshold", 85);
         dc.set("items.NETHERITE_HOE.gun_body_threshold", 50);
         dc.set("items.NETHERITE_HOE.gun_leg_threshold", 20);
@@ -655,20 +653,20 @@ public class GunItemConfig {
 
         /* ---- 弹夹系统 ---- */
         dc.set("items.IRON_HOE.gun_mag_capacity", 15);
-        dc.set("items.IRON_HOE.gun_reload_time_ticks", 30);
-        dc.set("items.IRON_HOE.gun_reload_empty_time_ticks", 40);
+        dc.set("items.IRON_HOE.gun_reload_ticks", 30);
+        dc.set("items.IRON_HOE.gun_reload_empty_ticks", 40);
         dc.set("items.IRON_HOE.gun_auto_reload", 0);
         dc.set("items.DIAMOND_HOE.gun_mag_capacity", 30);
-        dc.set("items.DIAMOND_HOE.gun_reload_time_ticks", 50);
-        dc.set("items.DIAMOND_HOE.gun_reload_empty_time_ticks", 60);
+        dc.set("items.DIAMOND_HOE.gun_reload_ticks", 50);
+        dc.set("items.DIAMOND_HOE.gun_reload_empty_ticks", 60);
         dc.set("items.DIAMOND_HOE.gun_auto_reload", 1);
         dc.set("items.NETHERITE_HOE.gun_mag_capacity", 5);
-        dc.set("items.NETHERITE_HOE.gun_reload_time_ticks", 70);
-        dc.set("items.NETHERITE_HOE.gun_reload_empty_time_ticks", 80);
+        dc.set("items.NETHERITE_HOE.gun_reload_ticks", 70);
+        dc.set("items.NETHERITE_HOE.gun_reload_empty_ticks", 80);
         dc.set("items.NETHERITE_HOE.gun_auto_reload", 0);
         /* 枪膛 (狙击枪启用) */
         dc.set("items.NETHERITE_HOE.gun_chamber_enabled", 1);
-        dc.set("items.NETHERITE_HOE.gun_chamber_bolt_time_ticks", 20);
+        dc.set("items.NETHERITE_HOE.gun_chamber_bolt_ticks", 20);
 
         /* ---- 呼吸/屏息 (开镜时自动屏息) ---- */
         dc.set("items.IRON_HOE.gun_ads_breath_max", 100);
@@ -722,23 +720,23 @@ public class GunItemConfig {
         dc.set("items.NETHERITE_HOE.gun_dura_loss_per_shot", 2);
 
         /* ---- 人体工学 ---- */
-        dc.set("items.IRON_HOE.gun_equip_time_ticks", 6);
-        dc.set("items.IRON_HOE.gun_holster_time_ticks", 4);
+        dc.set("items.IRON_HOE.gun_equip_ticks", 6);
+        dc.set("items.IRON_HOE.gun_holster_ticks", 4);
         dc.set("items.IRON_HOE.gun_sprint_to_fire_ticks", 8);
-        dc.set("items.IRON_HOE.gun_ads_in_time_ticks", 5);
-        dc.set("items.IRON_HOE.gun_ads_out_time_ticks", 3);
+        dc.set("items.IRON_HOE.gun_ads_in_ticks", 5);
+        dc.set("items.IRON_HOE.gun_ads_out_ticks", 3);
         dc.set("items.IRON_HOE.gun_weapon_swap_speed", 100);
-        dc.set("items.DIAMOND_HOE.gun_equip_time_ticks", 8);
-        dc.set("items.DIAMOND_HOE.gun_holster_time_ticks", 6);
+        dc.set("items.DIAMOND_HOE.gun_equip_ticks", 8);
+        dc.set("items.DIAMOND_HOE.gun_holster_ticks", 6);
         dc.set("items.DIAMOND_HOE.gun_sprint_to_fire_ticks", 10);
-        dc.set("items.DIAMOND_HOE.gun_ads_in_time_ticks", 7);
-        dc.set("items.DIAMOND_HOE.gun_ads_out_time_ticks", 4);
+        dc.set("items.DIAMOND_HOE.gun_ads_in_ticks", 7);
+        dc.set("items.DIAMOND_HOE.gun_ads_out_ticks", 4);
         dc.set("items.DIAMOND_HOE.gun_weapon_swap_speed", 85);
-        dc.set("items.NETHERITE_HOE.gun_equip_time_ticks", 12);
-        dc.set("items.NETHERITE_HOE.gun_holster_time_ticks", 8);
+        dc.set("items.NETHERITE_HOE.gun_equip_ticks", 12);
+        dc.set("items.NETHERITE_HOE.gun_holster_ticks", 8);
         dc.set("items.NETHERITE_HOE.gun_sprint_to_fire_ticks", 14);
-        dc.set("items.NETHERITE_HOE.gun_ads_in_time_ticks", 10);
-        dc.set("items.NETHERITE_HOE.gun_ads_out_time_ticks", 6);
+        dc.set("items.NETHERITE_HOE.gun_ads_in_ticks", 10);
+        dc.set("items.NETHERITE_HOE.gun_ads_out_ticks", 6);
         dc.set("items.NETHERITE_HOE.gun_weapon_swap_speed", 70);
 
         /* ---- 机动性 ---- */
@@ -759,15 +757,12 @@ public class GunItemConfig {
         dc.set("items.NETHERITE_HOE.gun_can_sprint", 0);
 
         /* ---- 开镜高级 ---- */
-        dc.set("items.IRON_HOE.gun_ads_sensitivity", 70);
         dc.set("items.IRON_HOE.gun_ads_sway_amount", 1.5);
         dc.set("items.IRON_HOE.gun_ads_night_vision", 0);
         dc.set("items.IRON_HOE.gun_ads_scope_type", 1);
-        dc.set("items.DIAMOND_HOE.gun_ads_sensitivity", 60);
         dc.set("items.DIAMOND_HOE.gun_ads_sway_amount", 2.5);
         dc.set("items.DIAMOND_HOE.gun_ads_night_vision", 0);
         dc.set("items.DIAMOND_HOE.gun_ads_scope_type", 1);
-        dc.set("items.NETHERITE_HOE.gun_ads_sensitivity", 40);
         dc.set("items.NETHERITE_HOE.gun_ads_sway_amount", 5.0);
         dc.set("items.NETHERITE_HOE.gun_ads_night_vision", 0);
         dc.set("items.NETHERITE_HOE.gun_ads_scope_type", 4);

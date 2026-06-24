@@ -1,5 +1,6 @@
 package io.github.liyughj.xH.gun;
 
+import io.github.liyughj.xH.debug.DebugManager;
 import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
@@ -328,6 +329,9 @@ public class GunListener implements Listener {
         boolean needsOverheatCheck = !weaponType.equals("flamethrower") && !weaponType.equals("laser")
             && !weaponType.equals("crossbow");
         boolean needsStandardCheck = !weaponType.equals("flamethrower") && !weaponType.equals("laser");
+
+        /* ── 调试：输出枪械全部属性 ── */
+        DebugManager.debugGunAttributes(player, weapon, weaponType);
 
         /* ── 切枪冷却检查 ── */
         if (EquipManager.isEquipBlocked(player)) return false;

@@ -1,6 +1,7 @@
 package io.github.liyughj.xH.command;
 
 import io.github.liyughj.xH.XH;
+import io.github.liyughj.xH.debug.DebugManager;
 import io.github.liyughj.xH.enchantmentLevel.EnchantmentLevelConfig;
 import io.github.liyughj.xH.enchantmentLevel.EnchantmentLevelDisplay;
 import io.github.liyughj.xH.enchantmentLevel.SpecialEffects;
@@ -45,6 +46,8 @@ public class XHCommand implements CommandExecutor, TabCompleter {
                 return handleLore(sender, args);
             case "give":
                 return handleGive(sender, args);
+            case "debug":
+                return handleDebug(sender);
             case "help":
                 sendHelp(sender);
                 return true;
@@ -63,7 +66,7 @@ public class XHCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             // 一级子命令
             String prefix = args[0].toLowerCase();
-            for (String cmd : new String[]{"give", "help", "lore", "reload"}) {
+            for (String cmd : new String[]{"debug", "give", "help", "lore", "reload"}) {
                 if (cmd.startsWith(prefix)) completions.add(cmd);
             }
             return completions;
@@ -206,6 +209,21 @@ public class XHCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    /* ==================== /xh debug ==================== */
+
+    private boolean handleDebug(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§c此命令只能由玩家执行");
+            return true;
+        }
+        if (!player.hasPermission("xh.admin")) {
+            sender.sendMessage("§c你没有权限执行此命令");
+            return true;
+        }
+        DebugManager.toggle(player);
+        return true;
+    }
+
     /* ==================== /xh reload ==================== */
 
     private boolean handleReload(CommandSender sender) {
@@ -276,6 +294,7 @@ public class XHCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/xh give ammo <口径> <弹种> [数量] §7- 获取弹药");
         sender.sendMessage("§e/xh give mag <ID> §7- 获取弹匣");
         sender.sendMessage("§e/xh reload §7- 重载插件配置");
+        sender.sendMessage("§e/xh debug §7- 切换调试模式（显示枪械属性/附魔/RPG效果）");
         sender.sendMessage("§e/xh lore xp §7- 切换到经验显示模式");
         sender.sendMessage("§e/xh lore §7- 切换回正常附魔显示");
         sender.sendMessage("§e/xh help §7- 显示此帮助信息");

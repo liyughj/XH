@@ -144,18 +144,18 @@ public final class LoreConfig {
             // 弹道
             "gun_bullet_speed", "gun_range", "gun_penetration_count",
             // 换弹
-            "gun_reload_time_ticks", "gun_reload_empty_time_ticks",
+            "gun_reload_ticks", "gun_reload_empty_ticks",
             // 枪膛
-            "gun_chamber_tactical_reload_bonus", "gun_chamber_bolt_time_ticks", "gun_chamber_auto_bolt",
+            "gun_chamber_tactical_reload_bonus", "gun_chamber_bolt_ticks", "gun_chamber_auto_bolt",
             // 爆头
-            "gun_headshot_chance", "gun_headshot_mult",
+            "gun_headshot_chance", "gun_headshot_multiplier",
             // 过热
             "gun_heat_threshold", "gun_heat_cool_rate",
             // 故障
             "gun_malfunc_base_chance",
             // 人体工学
-            "gun_equip_time_ticks", "gun_holster_time_ticks", "gun_sprint_to_fire_ticks",
-            "gun_weapon_swap_speed", "gun_ads_in_time_ticks", "gun_ads_out_time_ticks",
+            "gun_equip_ticks", "gun_holster_ticks", "gun_sprint_to_fire_ticks",
+            "gun_weapon_swap_speed", "gun_ads_in_ticks", "gun_ads_out_ticks",
             // 机动
             "gun_move_speed", "gun_sprint_speed", "gun_ads_move_speed", "gun_jump_height",
             // 开镜
@@ -195,27 +195,27 @@ public final class LoreConfig {
         dc.set("gun.gun_range",          "&7射程:       &6{value}格");
         dc.set("gun.gun_penetration_count","&7穿透:       &a{value}体");
         // --- 换弹 ---
-        dc.set("gun.gun_reload_time_ticks","&7换弹:       &f{value}tick");
-        dc.set("gun.gun_reload_empty_time_ticks","&7空仓换弹: &f{value}tick");
+        dc.set("gun.gun_reload_ticks","&7换弹:       &f{value}tick");
+        dc.set("gun.gun_reload_empty_ticks","&7空仓换弹: &f{value}tick");
         // --- 枪膛 ---
         dc.set("gun.gun_chamber_tactical_reload_bonus","&7战术换弹加成: &a+{value}");
-        dc.set("gun.gun_chamber_bolt_time_ticks","&7拉栓时间: &7{value}tick");
+        dc.set("gun.gun_chamber_bolt_ticks","&7拉栓时间: &7{value}tick");
         dc.set("gun.gun_chamber_auto_bolt","&7自动拉栓: &a{value}");
         // --- 爆头 ---
         dc.set("gun.gun_headshot_chance", "&7爆头率:     &e{value}");
-        dc.set("gun.gun_headshot_mult",   "&7爆头倍率:   &e{value}");
+        dc.set("gun.gun_headshot_multiplier",   "&7爆头倍率:   &e{value}");
         // --- 过热 ---
         dc.set("gun.gun_heat_threshold",  "&7过热阈值:   &c{value}热量");
         dc.set("gun.gun_heat_cool_rate",  "&7冷却速率:   &b{value}/秒");
         // --- 故障 ---
         dc.set("gun.gun_malfunc_base_chance","&7故障率:    &c{value}");
         // --- 人体工学 ---
-        dc.set("gun.gun_equip_time_ticks","&7切枪耗时:   &7{value}tick");
-        dc.set("gun.gun_holster_time_ticks","&7收枪耗时:  &7{value}tick");
+        dc.set("gun.gun_equip_ticks","&7切枪耗时:   &7{value}tick");
+        dc.set("gun.gun_holster_ticks","&7收枪耗时:  &7{value}tick");
         dc.set("gun.gun_sprint_to_fire_ticks","&7疾跑→开火: &7{value}tick");
         dc.set("gun.gun_weapon_swap_speed","&7切枪速度:   &7{value}");
-        dc.set("gun.gun_ads_in_time_ticks","&7开镜渐入:   &7{value}tick");
-        dc.set("gun.gun_ads_out_time_ticks","&7关镜渐出:   &7{value}tick");
+        dc.set("gun.gun_ads_in_ticks","&7开镜渐入:   &7{value}tick");
+        dc.set("gun.gun_ads_out_ticks","&7关镜渐出:   &7{value}tick");
         // --- 机动 ---
         dc.set("gun.gun_move_speed",       "&7持枪移速:   &b{value}");
         dc.set("gun.gun_sprint_speed",     "&7持枪疾跑:   &b{value}");

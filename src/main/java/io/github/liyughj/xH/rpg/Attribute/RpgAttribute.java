@@ -173,19 +173,19 @@ public enum RpgAttribute {
     /** 爆头概率（%），命中头部时触发爆头的概率 */
     GUN_HEADSHOT_CHANCE("gun_headshot_chance", "爆头概率", ValueType.PERCENT, 0.0, 100.0, 100.0, Category.GUN),
     /** 爆头倍率（%），触发爆头时伤害倍率 */
-    GUN_HEADSHOT_MULT("gun_headshot_mult", "爆头倍率", ValueType.PERCENT, 0.0, Double.MAX_VALUE, 200.0, Category.GUN),
+    GUN_HEADSHOT_MULT("gun_headshot_multiplier", "爆头倍率", ValueType.PERCENT, 0.0, Double.MAX_VALUE, 200.0, Category.GUN),
     /** 上肢概率（%），命中躯体时触发额外伤害的概率 */
     GUN_UPPER_CHANCE("gun_upper_chance", "上肢概率", ValueType.PERCENT, 0.0, 100.0, 100.0, Category.GUN),
     /** 上肢倍率（%），触发时伤害倍率 */
-    GUN_UPPER_MULT("gun_upper_mult", "上肢倍率", ValueType.PERCENT, 0.0, Double.MAX_VALUE, 100.0, Category.GUN),
+    GUN_UPPER_MULT("gun_upper_multiplier", "上肢倍率", ValueType.PERCENT, 0.0, Double.MAX_VALUE, 100.0, Category.GUN),
     /** 下身概率（%），命中腹部时触发额外伤害的概率 */
     GUN_LOWER_CHANCE("gun_lower_chance", "下身概率", ValueType.PERCENT, 0.0, 100.0, 100.0, Category.GUN),
     /** 下身倍率（%），触发时伤害倍率 */
-    GUN_LOWER_MULT("gun_lower_mult", "下身倍率", ValueType.PERCENT, 0.0, Double.MAX_VALUE, 100.0, Category.GUN),
+    GUN_LOWER_MULT("gun_lower_multiplier", "下身倍率", ValueType.PERCENT, 0.0, Double.MAX_VALUE, 100.0, Category.GUN),
     /** 腿部概率（%），命中腿部时触发额外伤害的概率 */
     GUN_LEG_CHANCE("gun_leg_chance", "腿部概率", ValueType.PERCENT, 0.0, 100.0, 100.0, Category.GUN),
     /** 腿部倍率（%），触发时伤害倍率 */
-    GUN_LEG_MULT("gun_leg_mult", "腿部倍率", ValueType.PERCENT, 0.0, Double.MAX_VALUE, 70.0, Category.GUN),
+    GUN_LEG_MULT("gun_leg_multiplier", "腿部倍率", ValueType.PERCENT, 0.0, Double.MAX_VALUE, 70.0, Category.GUN),
     /** 爆头阈值（%），弹落点≥眼高×此%→头部 */
     GUN_HEADSHOT_THRESHOLD("gun_headshot_threshold", "爆头阈值", ValueType.PERCENT, 0.0, 100.0, 85.0, Category.GUN),
     /** 上身阈值（%），弹落点≥眼高×此%→上肢/躯干 */
@@ -246,9 +246,9 @@ public enum RpgAttribute {
     /** 弹夹容量，一个弹夹的最大装填数 */
     GUN_MAG_CAPACITY("gun_mag_capacity", "弹夹容量", ValueType.FLAT, 0.0, Double.MAX_VALUE, 30.0, Category.GUN),
     /** 换弹时间（tick），战术换弹耗时 */
-    GUN_RELOAD_TIME_TICKS("gun_reload_time_ticks", "换弹时间", ValueType.FLAT, 0.0, Double.MAX_VALUE, 40.0, Category.GUN),
+    GUN_RELOAD_TIME_TICKS("gun_reload_ticks", "换弹时间", ValueType.FLAT, 0.0, Double.MAX_VALUE, 40.0, Category.GUN),
     /** 空仓换弹时间（tick），弹夹为零时的换弹耗时 */
-    GUN_RELOAD_EMPTY_TIME_TICKS("gun_reload_empty_time_ticks", "空仓换弹", ValueType.FLAT, 0.0, Double.MAX_VALUE, 50.0, Category.GUN),
+    GUN_RELOAD_EMPTY_TIME_TICKS("gun_reload_empty_ticks", "空仓换弹", ValueType.FLAT, 0.0, Double.MAX_VALUE, 50.0, Category.GUN),
     /** 分段换弹（tick），换弹可在此时间点后中断并完成 */
     GUN_RELOAD_STAGED("gun_reload_staged", "分段换弹", ValueType.FLAT, 0.0, Double.MAX_VALUE, 30.0, Category.GUN),
     /** 自动换弹开关，1=启用 0=禁用 */
@@ -262,7 +262,7 @@ public enum RpgAttribute {
     /** 战术换弹加成（%），非空仓换弹时间缩减百分比 */
     GUN_CHAMBER_TACTICAL_RELOAD_BONUS("gun_chamber_tactical_reload_bonus", "战术换弹加成", ValueType.PERCENT, 0.0, 100.0, 40.0, Category.GUN),
     /** 拉栓时间（tick），空仓换弹后额外拉栓耗时 */
-    GUN_CHAMBER_BOLT_TIME_TICKS("gun_chamber_bolt_time_ticks", "拉栓时间", ValueType.FLAT, 0.0, Double.MAX_VALUE, 15.0, Category.GUN),
+    GUN_CHAMBER_BOLT_TIME_TICKS("gun_chamber_bolt_ticks", "拉栓时间", ValueType.FLAT, 0.0, Double.MAX_VALUE, 15.0, Category.GUN),
     /** 自动拉栓，1=换弹后自动拉栓 0=需手动 */
     GUN_CHAMBER_AUTO_BOLT("gun_chamber_auto_bolt", "自动拉栓", ValueType.FLAT, 0.0, 1.0, 1.0, Category.GUN),
 
@@ -347,7 +347,7 @@ public enum RpgAttribute {
     /** 流血持续（tick） */
     BLEED_TICKS("bleed_ticks", "流血持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 0.0, Category.ORIGINAL_RPG),
     /** 弩爆头倍率（%），覆盖通用爆头倍率 [射线系统使用GUN_HEADSHOT_MULT] */
-    GUN_CROSSBOW_HEADSHOT_MULT("gun_crossbow_headshot_mult", "弩爆头倍率", ValueType.PERCENT, 0.0, 1000.0, 250.0, Category.GUN),
+    GUN_CROSSBOW_HEADSHOT_MULT("gun_crossbow_headshot_multiplier", "弩爆头倍率", ValueType.PERCENT, 0.0, 1000.0, 250.0, Category.GUN),
 
     /* 喷火器 */
     /** 火焰伤害/次 */
@@ -427,15 +427,15 @@ public enum RpgAttribute {
 
     /* ── 人体工学 ── */
     /** 切枪/掏出武器耗时（tick） */
-    GUN_EQUIP_TIME_TICKS("gun_equip_time_ticks", "切枪耗时", ValueType.FLAT, 0.0, Double.MAX_VALUE, 10.0, Category.GUN),
+    GUN_EQUIP_TIME_TICKS("gun_equip_ticks", "切枪耗时", ValueType.FLAT, 0.0, Double.MAX_VALUE, 10.0, Category.GUN),
     /** 收枪耗时（tick），切换为其他物品的延迟 */
-    GUN_HOLSTER_TIME_TICKS("gun_holster_time_ticks", "收枪耗时", ValueType.FLAT, 0.0, Double.MAX_VALUE, 5.0, Category.GUN),
+    GUN_HOLSTER_TIME_TICKS("gun_holster_ticks", "收枪耗时", ValueType.FLAT, 0.0, Double.MAX_VALUE, 5.0, Category.GUN),
     /** 疾跑→开火延迟（tick），冲刺后多久才能射击 */
     GUN_SPRINT_TO_FIRE_TICKS("gun_sprint_to_fire_ticks", "疾跑开火延迟", ValueType.FLAT, 0.0, Double.MAX_VALUE, 6.0, Category.GUN),
     /** 开镜渐入耗时（tick），0=瞬间进入 */
-    GUN_ADS_IN_TIME_TICKS("gun_ads_in_time_ticks", "开镜渐入", ValueType.FLAT, 0.0, 60.0, 5.0, Category.GUN),
+    GUN_ADS_IN_TIME_TICKS("gun_ads_in_ticks", "开镜渐入", ValueType.FLAT, 0.0, 60.0, 5.0, Category.GUN),
     /** 关镜渐出耗时（tick），0=瞬间退出 */
-    GUN_ADS_OUT_TIME_TICKS("gun_ads_out_time_ticks", "关镜渐出", ValueType.FLAT, 0.0, 60.0, 3.0, Category.GUN),
+    GUN_ADS_OUT_TIME_TICKS("gun_ads_out_ticks", "关镜渐出", ValueType.FLAT, 0.0, 60.0, 3.0, Category.GUN),
     /** 切换到此枪的速度倍率（100=正常，50=慢一倍） */
     GUN_WEAPON_SWAP_SPEED("gun_weapon_swap_speed", "切枪速度", ValueType.PERCENT, 10.0, 200.0, 100.0, Category.GUN),
 
@@ -452,8 +452,6 @@ public enum RpgAttribute {
     GUN_CAN_SPRINT("gun_can_sprint", "允许疾跑", ValueType.FLAT, 0.0, 1.0, 1.0, Category.GUN),
 
     /* ── 开镜高级属性 ── */
-    /** 开镜灵敏度倍率（100=不变，50=减半）[服务端无法控制客户端鼠标灵敏度] */
-    GUN_ADS_SENSITIVITY("gun_ads_sensitivity", "开镜灵敏度", ValueType.PERCENT, 10.0, 200.0, 70.0, Category.GUN),
     /** 开镜晃动幅度，值越大开镜时子弹散布越大，0=无晃动 */
     GUN_ADS_SWAY_AMOUNT("gun_ads_sway_amount", "开镜晃动", ValueType.FLAT, 0.0, 10.0, 1.0, Category.GUN),
     /** 呼吸值上限（开镜时屏息消耗至此值×阈值%停止），100=默认 */
@@ -520,9 +518,6 @@ public enum RpgAttribute {
     GUN_HIT_MARKER_TYPE("gun_hit_marker_type", "命中标记", ValueType.FLAT, 0.0, 3.0, 0.0, Category.GUN),
     /** 击杀标记：0=默认 1=特殊击杀音效 2=击杀粒子 */
     GUN_HIT_MARKER_KILL("gun_hit_marker_kill", "击杀标记", ValueType.FLAT, 0.0, 2.0, 0.0, Category.GUN),
-    /** 检视武器动画时长（tick），0=无检视 */
-    GUN_INSPECT_TICKS("gun_inspect_ticks", "检视时长", ValueType.FLAT, 0.0, Double.MAX_VALUE, 0.0, Category.GUN),
-
     /* ── 压制系统 ── */
     /** 压制范围（格），AOE 检测半径 */
     GUN_SUPPRESS_RADIUS("gun_suppress_radius", "压制范围", ValueType.FLAT, 0.0, 50.0, 10.0, Category.GUN),

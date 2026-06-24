@@ -1,5 +1,6 @@
 package io.github.liyughj.xH.enchantmentLevel.EnchantmentsList;
 
+import io.github.liyughj.xH.debug.DebugManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -513,19 +514,19 @@ public class LevelEffectListener implements Listener {
         ItemMeta meta = weapon.getItemMeta();
         if (meta == null) return;
 
-        applyWeaponDamageBonus(event, meta, target);
+        applyWeaponDamageBonus(event, meta, target, player);
         applyDensityDamage(event, meta, player);
         applyRiptideDamage(event, player);
         applyDepthStriderDamage(event, player);
         applySoulSpeedDamage(event, player);
         applySwiftSneakDamage(event, player);
-        applyFireAspect(meta, target);
-        applyKnockback(meta, player, target);
+        applyFireAspect(meta, target, player);
+        applyKnockback(meta, player, target, player);
         applyBreachPenetration(event, meta);
         applyWindBurst(event, meta, player);
     }
 
-    private void applyWeaponDamageBonus(EntityDamageByEntityEvent event, ItemMeta meta, LivingEntity target) {
+    private void applyWeaponDamageBonus(EntityDamageByEntityEvent event, ItemMeta meta, LivingEntity target, Player player) {
         double bestPercent = 0.0;
         int bestLevel = 0;
         String bestKey = null;
@@ -559,6 +560,8 @@ public class LevelEffectListener implements Listener {
         double multiplier = 1.0 + (bestPercent * bestLevel / 100.0)
             + levelConfig.getDamagePercentBonus(bestKey) / 100.0;
         event.setDamage(event.getDamage() * multiplier);
+
+        DebugManager.debugEnchantDamage(player, bestKey, bestLevel, bestPercent, multiplier);
     }
 
     private static boolean isUndead(LivingEntity entity) {
@@ -675,7 +678,7 @@ public class LevelEffectListener implements Listener {
         event.setDamage(event.getDamage() * multiplier);
     }
 
-    private void applyFireAspect(ItemMeta meta, LivingEntity target) {
+    private void applyFireAspect(ItemMeta meta, LivingEntity target, Player player) {
         int level = meta.getEnchantLevel(Enchantment.FIRE_ASPECT);
         if (level <= 0) return;
 
@@ -683,11 +686,13 @@ public class LevelEffectListener implements Listener {
         if (!levelConfig.hasFireEffect(key)) return;
 
         int ticksPerLevel = levelConfig.getFireTicksPerLevel(key);
-        target.setFireTicks(ticksPerLevel * level
-            + levelConfig.getFireTicksBonus(key));
+        int ticks = ticksPerLevel * level + levelConfig.getFireTicksBonus(key);
+        target.setFireTicks(ticks);
+
+        DebugManager.debugEnchantFire(player, key, level, ticks);
     }
 
-    private void applyKnockback(ItemMeta meta, Player player, LivingEntity target) {
+    private void applyKnockback(ItemMeta meta, Player player, LivingEntity target, Player debugPlayer) {
         int level = meta.getEnchantLevel(Enchantment.KNOCKBACK);
         if (level <= 0) return;
 
@@ -702,6 +707,8 @@ public class LevelEffectListener implements Listener {
         double blocksPerLevel = levelConfig.getKnockbackBlocksPerLevel(key);
         double totalBlocks = blocksPerLevel * level
             + levelConfig.getKnockbackBlocksBonus(key);
+
+        DebugManager.debugEnchantKnockback(debugPlayer, key, level, totalBlocks);
 
         Vector direction = target.getLocation().toVector()
             .subtract(player.getLocation().toVector())

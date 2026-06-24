@@ -1,5 +1,6 @@
 package io.github.liyughj.xH.gun;
 
+import io.github.liyughj.xH.debug.DebugManager;
 import io.github.liyughj.xH.rpg.Attribute.AttributeCalculator;
 import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
@@ -238,16 +239,36 @@ public final class RayTraceManager {
             }
 
             // ── RPG：暴击 ──
+            double beforeCrit = finalDamage;
             finalDamage = AttributeCalculator.applyCrit(shooter, weapon, finalDamage);
+            if (finalDamage > beforeCrit) {
+                DebugManager.debugCrit(shooter,
+                    AttributeStorage.getAttrValue(weapon, RpgAttribute.CRITICAL_CHANCE),
+                    AttributeStorage.getAttrValue(weapon, RpgAttribute.CRITICAL_MULTIPLIER),
+                    beforeCrit, finalDamage);
+            }
 
             // ── RPG：穿透（低穿/高穿）──
             AttributeCalculator.PenetrationResult penResult =
                 AttributeCalculator.calcPenetration(shooter, weapon, hit.entity, finalDamage);
             finalDamage += penResult.extraDamage;
+            if (penResult.extraDamage > 0 || penResult.remainingArmorPct < 1.0) {
+                DebugManager.debugPenetration(shooter,
+                    AttributeStorage.getAttrValue(weapon, RpgAttribute.LOW_PENETRATION),
+                    AttributeStorage.getAttrValue(weapon, RpgAttribute.HIGH_PENETRATION),
+                    AttributeStorage.getAttrValue(weapon, RpgAttribute.PENETRATION_EFFICIENCY),
+                    0, // toughness is internal to calcPenetration
+                    penResult.extraDamage, penResult.remainingArmorPct);
+            }
 
             // ── RPG：破甲（已有破甲伤害倍率）──
             double abMult = RpgCombatListener.applyRayArmorBreak(shooter, weapon, hit.entity);
-            if (abMult > 1.0) finalDamage *= abMult;
+            if (abMult > 1.0) {
+                DebugManager.debugArmorBreak(shooter,
+                    AttributeStorage.getAttrValue(weapon, RpgAttribute.ARMOR_BREAK_CHANCE),
+                    abMult, "触发");
+                finalDamage *= abMult;
+            }
 
             // ── 部位伤害 ──
             finalDamage = applyHitzone(shooter, weapon, hit.entity, hit.hitLoc, finalDamage);
@@ -284,9 +305,16 @@ public final class RayTraceManager {
             hit.entity.removeMetadata("xh_raytrace", plugin);
 
             // ── RPG：吸血 ──
+            double beforeLs = finalDamage;
             AttributeCalculator.DamageResult lsResult =
                 AttributeCalculator.applyLifesteal(shooter, weapon, hit.entity, finalDamage);
-            if (lsResult.heal > 0) RpgCombatListener.applyHeal(shooter, lsResult.heal);
+            if (lsResult.heal > 0) {
+                RpgCombatListener.applyHeal(shooter, lsResult.heal);
+                DebugManager.debugLifesteal(shooter,
+                    AttributeStorage.getAttrValue(weapon, RpgAttribute.LIFESTEAL_CHANCE),
+                    lsResult.heal, 0, lsResult.damage - beforeLs,
+                    lsResult.heal, lsResult.damage - beforeLs);
+            }
 
             // ── RPG：致盲 ──
             RpgCombatListener.applyRayBlind(shooter, weapon, hit.entity);
