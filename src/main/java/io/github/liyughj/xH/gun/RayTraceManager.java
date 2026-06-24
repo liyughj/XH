@@ -242,9 +242,11 @@ public final class RayTraceManager {
             double beforeCrit = finalDamage;
             finalDamage = AttributeCalculator.applyCrit(shooter, weapon, finalDamage);
             if (finalDamage > beforeCrit) {
+                AttributeRange critChanceR = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.CRITICAL_CHANCE);
+                AttributeRange critMultR = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.CRITICAL_MULTIPLIER);
                 DebugManager.debugCrit(shooter,
-                    AttributeStorage.getAttrValue(weapon, RpgAttribute.CRITICAL_CHANCE),
-                    AttributeStorage.getAttrValue(weapon, RpgAttribute.CRITICAL_MULTIPLIER),
+                    critChanceR.getMin(), critChanceR.getMax(),
+                    critMultR.getMin(), critMultR.getMax(),
                     beforeCrit, finalDamage);
             }
 
@@ -253,19 +255,22 @@ public final class RayTraceManager {
                 AttributeCalculator.calcPenetration(shooter, weapon, hit.entity, finalDamage);
             finalDamage += penResult.extraDamage;
             if (penResult.extraDamage > 0 || penResult.remainingArmorPct < 1.0) {
+                AttributeRange lowPenR = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.LOW_PENETRATION);
+                AttributeRange highPenR = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.HIGH_PENETRATION);
+                AttributeRange effR = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.PENETRATION_EFFICIENCY);
                 DebugManager.debugPenetration(shooter,
-                    AttributeStorage.getAttrValue(weapon, RpgAttribute.LOW_PENETRATION),
-                    AttributeStorage.getAttrValue(weapon, RpgAttribute.HIGH_PENETRATION),
-                    AttributeStorage.getAttrValue(weapon, RpgAttribute.PENETRATION_EFFICIENCY),
-                    0, // toughness is internal to calcPenetration
+                    lowPenR.getMin(), lowPenR.getMax(),
+                    highPenR.getMin(), highPenR.getMax(),
+                    effR.getMin(), effR.getMax(),
                     penResult.extraDamage, penResult.remainingArmorPct);
             }
 
             // ── RPG：破甲（已有破甲伤害倍率）──
             double abMult = RpgCombatListener.applyRayArmorBreak(shooter, weapon, hit.entity);
             if (abMult > 1.0) {
+                AttributeRange abChanceR = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.ARMOR_BREAK_CHANCE);
                 DebugManager.debugArmorBreak(shooter,
-                    AttributeStorage.getAttrValue(weapon, RpgAttribute.ARMOR_BREAK_CHANCE),
+                    abChanceR.getMin(), abChanceR.getMax(),
                     abMult, "触发");
                 finalDamage *= abMult;
             }
@@ -310,8 +315,9 @@ public final class RayTraceManager {
                 AttributeCalculator.applyLifesteal(shooter, weapon, hit.entity, finalDamage);
             if (lsResult.heal > 0) {
                 RpgCombatListener.applyHeal(shooter, lsResult.heal);
+                AttributeRange lsChanceR = AttributeStorage.getItemAttrRange(weapon, RpgAttribute.LIFESTEAL_CHANCE);
                 DebugManager.debugLifesteal(shooter,
-                    AttributeStorage.getAttrValue(weapon, RpgAttribute.LIFESTEAL_CHANCE),
+                    lsChanceR.getMin(), lsChanceR.getMax(),
                     lsResult.heal, 0, lsResult.damage - beforeLs,
                     lsResult.heal, lsResult.damage - beforeLs);
             }

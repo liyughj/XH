@@ -1,5 +1,6 @@
 package io.github.liyughj.xH.debug;
 
+import io.github.liyughj.xH.rpg.Attribute.AttributeRange;
 import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
 import org.bukkit.Bukkit;
@@ -74,7 +75,8 @@ public class DebugManager {
     /* ==================== 枪械属性输出 ==================== */
 
     /**
-     * 输出当前枪械上所有 GUN 类别属性的值。
+     * 输出当前枪械上所有 GUN 类别属性的配置区间/值（不重新roll，避免与实际伤害不一致）。
+     * 区间属性显示 min~max，固定值属性显示原值。
      * 在射击时调用。
      */
     public static void debugGunAttributes(Player player, ItemStack weapon, String weaponType) {
@@ -85,13 +87,27 @@ public class DebugManager {
 
         for (RpgAttribute attr : RpgAttribute.values()) {
             if (attr.getCategory() != RpgAttribute.Category.GUN) continue;
-            double val = AttributeStorage.getAttrValue(weapon, attr);
-            // 跳过默认值（减少刷屏）
-            if (val == attr.getDefaultValue()) continue;
+            AttributeRange range = AttributeStorage.getItemAttrRange(weapon, attr);
+            double min = range.getMin();
+            double max = range.getMax();
+
+            // 跳过默认值（min==max==默认，说明未被配置）
+            if (min == attr.getDefaultValue() && max == attr.getDefaultValue()) continue;
 
             String label = attr.getDisplayName();
-            String valueStr = attr.isPercent() ? String.format("%.1f%%", val) : String.format("%.1f", val);
-            sb.append("\n§7  ").append(label).append(": §f").append(valueStr);
+            String valueStr;
+            if (min != max) {
+                // 区间属性：显示 min~max
+                valueStr = attr.isPercent()
+                    ? String.format("§e%.1f%%~%.1f%%", min, max)
+                    : String.format("§e%.1f~%.1f", min, max);
+            } else {
+                // 固定值
+                valueStr = attr.isPercent()
+                    ? String.format("§f%.1f%%", min)
+                    : String.format("§f%.1f", min);
+            }
+            sb.append("\n§7  ").append(label).append(": ").append(valueStr);
         }
 
         // 额外：弹夹状态
@@ -156,21 +172,37 @@ public class DebugManager {
 
     /**
      * 输出暴击判定结果
+     * @param critChanceMin 暴击率区间下界
+     * @param critChanceMax 暴击率区间上界
+     * @param critMultMin 暴击倍率区间下界
+     * @param critMultMax 暴击倍率区间上界
      */
-    public static void debugCrit(Player player, double chance, double multiplier, double before, double after) {
+    public static void debugCrit(Player player,
+            double critChanceMin, double critChanceMax,
+            double critMultMin, double critMultMax,
+            double before, double after) {
         if (!isEnabled(player)) return;
-        String msg = String.format("§c[RPG暴击] §7概率=§e%.1f%% §7倍率=§e%.1f%% §7伤害: §f%.1f → §c%.1f",
-            chance, multiplier, before, after);
+        String chanceStr = critChanceMin != critChanceMax
+            ? String.format("%.1f%%~%.1f%%", critChanceMin, critChanceMax)
+            : String.format("%.1f%%", critChanceMin);
+        String multStr = critMultMin != critMultMax
+            ? String.format("%.1f%%~%.1f%%", critMultMin, critMultMax)
+            : String.format("%.1f%%", critMultMin);
+        String msg = String.format("§c[RPG暴击] §7概率区间=§e%s §7倍率区间=§e%s §7伤害: §f%.1f → §c%.1f",
+            chanceStr, multStr, before, after);
         debug(player, msg);
     }
 
     /**
      * 输出吸血判定结果
      */
-    public static void debugLifesteal(Player player, double chance, double steal, double flat, double drain, double totalHeal, double extraDmg) {
+    public static void debugLifesteal(Player player, double chanceMin, double chanceMax, double steal, double flat, double drain, double totalHeal, double extraDmg) {
         if (!isEnabled(player)) return;
         StringBuilder sb = new StringBuilder();
-        sb.append(String.format("§a[RPG吸血] §7概率=§e%.1f%%", chance));
+        String chanceStr = chanceMin != chanceMax
+            ? String.format("%.1f%%~%.1f%%", chanceMin, chanceMax)
+            : String.format("%.1f%%", chanceMin);
+        sb.append(String.format("§a[RPG吸血] §7概率区间=§e%s", chanceStr));
         if (steal > 0) sb.append(String.format(" §7偷取=§e%.1f", steal));
         if (flat > 0) sb.append(String.format(" §7固定=§e%.1f", flat));
         if (drain > 0) sb.append(String.format(" §7汲取=§e%.1f", drain));
@@ -182,20 +214,28 @@ public class DebugManager {
     /**
      * 输出穿透判定结果
      */
-    public static void debugPenetration(Player player, double lowPen, double highPen, double eff, double toughness, double extraDmg, double remainingPct) {
+    public static void debugPenetration(Player player, double lowPenMin, double lowPenMax,
+            double highPenMin, double highPenMax, double effMin, double effMax,
+            double extraDmg, double remainingPct) {
         if (!isEnabled(player)) return;
-        String msg = String.format("§9[RPG穿透] §7低穿=§e%.1f%% §7高穿=§e%.1f%% §7效能=§e%.1f%% §7韧性=§e%.1f §7额外=§c%.1f §7残余减免=§e%.1f%%",
-            lowPen, highPen, eff, toughness, extraDmg, remainingPct * 100);
+        String lowStr = lowPenMin != lowPenMax ? String.format("%.1f%%~%.1f%%", lowPenMin, lowPenMax) : String.format("%.1f%%", lowPenMin);
+        String highStr = highPenMin != highPenMax ? String.format("%.1f%%~%.1f%%", highPenMin, highPenMax) : String.format("%.1f%%", highPenMin);
+        String effStr = effMin != effMax ? String.format("%.1f%%~%.1f%%", effMin, effMax) : String.format("%.1f%%", effMin);
+        String msg = String.format("§9[RPG穿透] §7低穿=§e%s §7高穿=§e%s §7效能=§e%s §7额外伤害=§c%.1f §7残余减免=§e%.1f%%",
+            lowStr, highStr, effStr, extraDmg, remainingPct * 100);
         debug(player, msg);
     }
 
     /**
      * 输出破甲判定结果
      */
-    public static void debugArmorBreak(Player player, double chance, double mult, String level) {
+    public static void debugArmorBreak(Player player, double chanceMin, double chanceMax, double mult, String level) {
         if (!isEnabled(player)) return;
-        String msg = String.format("§6[RPG破甲] §7概率=§e%.1f%% §7倍率=§e%.2f §7程度=§c%s",
-            chance, mult, level);
+        String chanceStr = chanceMin != chanceMax
+            ? String.format("%.1f%%~%.1f%%", chanceMin, chanceMax)
+            : String.format("%.1f%%", chanceMin);
+        String msg = String.format("§6[RPG破甲] §7概率区间=§e%s §7倍率=§e%.2f §7程度=§c%s",
+            chanceStr, mult, level);
         debug(player, msg);
     }
 
