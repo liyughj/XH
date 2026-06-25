@@ -152,6 +152,9 @@ public class LevelEffectListener implements Listener {
     /** 引雷重入防护（防止 world.strikeLightning() 递归触发 LightningStrikeEvent） */
     private final ThreadLocal<Boolean> inChannelingStrike = ThreadLocal.withInitial(() -> false);
 
+    /** 击退剥离：LOWEST 捕获目标速度，HIGH 中用它代替原版击退（防止双倍击退） */
+    private final Map<UUID, Vector> preKnockbackVelocities = new HashMap<>();
+
     /** 引雷待处理：投掷命中的玩家 UUID → 引雷等级 */
     private final Map<UUID, Integer> pendingChanneling = new HashMap<>();
 
@@ -371,6 +374,7 @@ public class LevelEffectListener implements Listener {
 
         stripVanillaWeaponDamage(event, meta, target);
         stripVanillaFireAspect(meta, target);
+        stripVanillaKnockback(meta, target);
     }
 
     /**
@@ -482,6 +486,20 @@ public class LevelEffectListener implements Listener {
         if (!levelConfig.hasFireEffect(key)) return;
 
         target.setFireTicks(0);
+    }
+
+    /**
+     * LOWEST 优先级：捕获目标当前速度（原版击退尚未应用），
+     * 供 HIGH 阶段的 applyKnockback 替换原版击退。
+     */
+    private void stripVanillaKnockback(ItemMeta meta, LivingEntity target) {
+        int level = meta.getEnchantLevel(Enchantment.KNOCKBACK);
+        if (level <= 0) return;
+
+        String key = Enchantment.KNOCKBACK.getKey().getKey();
+        if (!levelConfig.hasKnockbackEffect(key)) return;
+
+        preKnockbackVelocities.put(target.getUniqueId(), target.getVelocity().clone());
     }
 
     /* ==================== 第二步：应用自定义附魔效果 ==================== */
@@ -719,9 +737,15 @@ public class LevelEffectListener implements Listener {
 
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!target.isValid() || target.isDead()) return;
-            target.setVelocity(target.getVelocity()
+
+            /* 取回 LOWEST 阶段捕获的原始速度（原版击退尚未应用） */
+            Vector baseVel = preKnockbackVelocities.remove(target.getUniqueId());
+            if (baseVel == null) baseVel = target.getVelocity(); // fallback
+
+            /* 自定义击退 = 原始速度 + 自定义击退向量（不叠加原版） */
+            target.setVelocity(baseVel.clone()
                 .add(direction.multiply(velocityStrength))
-                .setY(Math.min(target.getVelocity().getY() + 0.4, 0.4)));
+                .setY(Math.min(baseVel.getY() + 0.4, 0.4)));
         });
     }
 
@@ -2320,6 +2344,12 @@ public class LevelEffectListener implements Listener {
 
     /* ==================== 抢夺（掉落物） ==================== */
 
+    /**
+     * HIGH 优先级：剥离原版抢夺效果后，应用自定义抢夺倍率
+     * <p>
+     * EntityDeathEvent 的 drops 已包含原版抢夺加成（每级 +1 max drop + 稀有概率），
+     * 必须先行剥离再将自定义倍率应用在原始掉落上，避免双倍叠加。
+     */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityDeath(EntityDeathEvent event) {
         LivingEntity entity = event.getEntity();
@@ -2343,6 +2373,16 @@ public class LevelEffectListener implements Listener {
         String key = Enchantment.LOOTING.getKey().getKey();
         if (!levelConfig.hasLootingEffect(key)) return;
 
+        /* ---- 剥离原版抢夺效果 ---- */
+        /* 原版每级 +1 max drop：将 amount > 1 的掉落扣回 lootingLevel，最低保留 1 */
+        for (ItemStack drop : event.getDrops()) {
+            if (drop.getAmount() > 1) {
+                int stripped = Math.max(1, drop.getAmount() - lootingLevel);
+                drop.setAmount(stripped);
+            }
+        }
+
+        /* ---- 应用自定义抢夺效果 ---- */
         double maxDropPercentPerLevel = levelConfig.getLootingMaxDropPercentPerLevel(key);
         double rareChancePercentPerLevel = levelConfig.getLootingRareChancePercentPerLevel(key);
 

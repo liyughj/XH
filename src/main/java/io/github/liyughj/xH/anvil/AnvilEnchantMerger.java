@@ -50,6 +50,8 @@ public class AnvilEnchantMerger {
         WEAPON_DAMAGE_ENCHANTS.add(Enchantment.SHARPNESS);
         WEAPON_DAMAGE_ENCHANTS.add(Enchantment.SMITE);
         WEAPON_DAMAGE_ENCHANTS.add(Enchantment.BANE_OF_ARTHROPODS);
+        WEAPON_DAMAGE_ENCHANTS.add(Enchantment.DENSITY);
+        WEAPON_DAMAGE_ENCHANTS.add(Enchantment.BREACH);
 
         /* 护甲保护附魔组 */
         ARMOR_PROTECTION_ENCHANTS.add(Enchantment.PROTECTION);
