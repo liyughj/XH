@@ -111,17 +111,8 @@ public class MalfunctionManager {
 
         // 热量加成
         chance += io.github.liyughj.xH.specialEvent.HeatSystem.getMalfunctionBonus(player, weapon);
-        double malfuncHeatFactor = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_MALFUNC_HEAT_FACTOR);
-        if (malfuncHeatFactor > 0) {
-            double heatPct = io.github.liyughj.xH.specialEvent.HeatSystem.getHeatPercent(player, weapon);
-            chance += heatPct * (malfuncHeatFactor / 100.0);
-        }
 
-        // 耐久加成（耐久阀系统 + 故障系统自身的耐久因子 叠加）
-        double duraPct = io.github.liyughj.xH.specialEvent.DurabilitySystem.getDurabilityPercent(player, weapon);
-        double duraFactor = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_MALFUNC_DURA_FACTOR);
-        chance += Math.max(0, (1.0 - duraPct)) * 100.0 * (duraFactor / 100.0);
-        // 耐久阀故障加成
+        // 耐久加成（仅耐久阀系统）
         chance += io.github.liyughj.xH.specialEvent.DurabilitySystem.getDurabilityMalfunctionBonus(player, weapon);
 
         return Math.min(chance, 100);

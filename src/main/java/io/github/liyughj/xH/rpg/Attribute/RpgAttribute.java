@@ -208,8 +208,6 @@ public enum RpgAttribute {
     /* --- 过热系统 --- */
     /** 单发热量，每发射击增加的热量值 */
     GUN_HEAT_PER_SHOT("gun_heat_per_shot", "单发热量", ValueType.FLAT, 0.0, Double.MAX_VALUE, 5.0, Category.GUN),
-    /** 过热阈值，热量≥此值触发过热 */
-    GUN_HEAT_THRESHOLD("gun_heat_threshold", "过热阈值", ValueType.FLAT, 0.0, Double.MAX_VALUE, 100.0, Category.GUN),
     /** 冷却速率（/秒），每秒降低的热量值 */
     GUN_HEAT_COOL_RATE("gun_heat_cool_rate", "冷却速率", ValueType.FLAT, 0.0, Double.MAX_VALUE, 10.0, Category.GUN),
     /** 过热惩罚持续（tick），过热后强制冷却时间 */
@@ -236,11 +234,7 @@ public enum RpgAttribute {
     /* --- 故障系统 --- */
     /** 基础故障率（%），每发子弹的基准概率 */
     GUN_MALFUNC_BASE_CHANCE("gun_malfunc_base_chance", "基础故障率", ValueType.PERCENT, 0.0, 100.0, 0.0, Category.GUN),
-    /** 热量故障因子（%），热量每1%增加的故障率% */
-    GUN_MALFUNC_HEAT_FACTOR("gun_malfunc_heat_factor", "热量故障因子", ValueType.PERCENT, 0.0, 500.0, 200.0, Category.GUN),
-    /** 耐久故障因子（%），耐久每少1%增加的故障率% */
-    GUN_MALFUNC_DURA_FACTOR("gun_malfunc_dura_factor", "耐久故障因子", ValueType.PERCENT, 0.0, 500.0, 200.0, Category.GUN),
-    /** 卡壳排除时间（tick） */
+    /** 卡壳排除时间（tick），左键排障耗时 */
     GUN_MALFUNC_JAM_CLEAR_TICKS("gun_malfunc_jam_clear_ticks", "卡壳排除", ValueType.FLAT, 0.0, Double.MAX_VALUE, 30.0, Category.GUN),
     /** 灾难性故障伤害（对持枪者） */
     GUN_MALFUNC_CATA_DAMAGE("gun_malfunc_cata_damage", "炸膛伤害", ValueType.FLAT, 0.0, Double.MAX_VALUE, 20.0, Category.GUN),

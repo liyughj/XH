@@ -8,19 +8,20 @@ import io.github.liyughj.xH.rpg.Attribute.AttributeStorage;
 import io.github.liyughj.xH.rpg.Attribute.RpgAttribute;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 /**
  * 热量系统管理器（specialEvent 版本）。
  * <p>
  * 每发射击增加热量，停止射击时自然冷却。
  * 热量值以 {@code gun_heat_max} 为上限，通过百分比判定各类事件阈值。
+ * <p>
+ * 热量状态存储在武器 PDC 中（xh:heat, xh:heat_penalty），每把枪独立。
  *
  * <h3>核心属性</h3>
  * <ul>
@@ -44,28 +45,27 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@code gun_heat_recoil_factor} — 后坐因子</li>
  *   <li>{@code gun_heat_malfunction_factor} — 故障因子</li>
  * </ul>
+ *
+ * <h3>PDC 存储</h3>
+ * <ul>
+ *   <li>{@code xh:heat}           — 当前热量值（DOUBLE）</li>
+ *   <li>{@code xh:heat_penalty}   — 过热惩罚结束的世界tick（LONG，0=无惩罚）</li>
+ * </ul>
  */
 public class HeatSystem {
 
-    private static final Map<UUID, HeatState> states = new ConcurrentHashMap<>();
-
-    public static class HeatState {
-        double heat;           // 当前热量值
-        long penaltyUntilTick; // 过热惩罚结束的世界tick（0=无惩罚）
-    }
-
-    private static HeatState getState(Player player) {
-        return states.computeIfAbsent(player.getUniqueId(), k -> new HeatState());
-    }
+    private static final NamespacedKey KEY_HEAT = new NamespacedKey("xh", "heat");
+    private static final NamespacedKey KEY_PENALTY = new NamespacedKey("xh", "heat_penalty");
 
     /** 获取热量百分比（0~1），忽略过热系统开关时返回0 */
     public static double getHeatPercent(Player player, ItemStack weapon) {
         if (!GunSystemConfig.isSystemEnabled(player, "overheat")) return 0;
-        HeatState state = states.get(player.getUniqueId());
-        if (state == null || state.heat <= 0) return 0;
+        if (weapon == null) return 0;
+        double heat = getPDC(weapon, KEY_HEAT);
+        if (heat <= 0) return 0;
         double max = getMaxHeat(weapon);
         if (max <= 0) return 0;
-        return Math.min(1.0, state.heat / max);
+        return Math.min(1.0, heat / max);
     }
 
     /** 获取枪械最大热量 */
@@ -83,23 +83,25 @@ public class HeatSystem {
     public static boolean onShoot(Player player, ItemStack weapon) {
         if (!GunSystemConfig.isSystemEnabled(player, "overheat")) return false;
 
-        HeatState state = getState(player);
-
         // 过热惩罚期间仍然禁止射击
-        if (isPenaltyActive(player, state)) return true;
+        if (isPenaltyActive(player, weapon)) return true;
+
+        double heat = getPDC(weapon, KEY_HEAT);
 
         // 热量系数：单发热量 + 弹药热量修正
         double heatPerShot = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_PER_SHOT);
         AmmoConfig.AmmoTypeDef ammo = MagazineManager.peekNextAmmoTypeDef(weapon);
         if (ammo != null) heatPerShot *= ammo.heatMult;
 
-        state.heat = Math.min(getMaxHeat(weapon), state.heat + heatPerShot);
+        heat = Math.min(getMaxHeat(weapon), heat + heatPerShot);
+        setPDC(weapon, KEY_HEAT, heat);
 
         // 检测是否触发过热
         double triggerPct = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_OVERHEAT_TRIGGER);
         if (triggerPct > 0 && getHeatPercent(player, weapon) * 100.0 >= triggerPct) {
             double penaltyTicks = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_OVERHEAT_PENALTY_TICKS);
-            state.penaltyUntilTick = currentTick(player) + (long) penaltyTicks;
+            long penaltyUntil = currentTick(player) + (long) penaltyTicks;
+            setPDCLong(weapon, KEY_PENALTY, penaltyUntil);
 
             player.playSound(player.getLocation(), Sound.BLOCK_LAVA_EXTINGUISH, 0.5f, 1.0f);
             player.sendActionBar(Component.text("过热! 冷却中...", NamedTextColor.RED));
@@ -111,40 +113,39 @@ public class HeatSystem {
     /* ──────── 冷却 ──────── */
 
     /**
-     * 每tick调用。自然冷却 + 过热惩罚倒计时。
+     * 每 tick 调用。自然冷却 + 过热惩罚倒计时。
+     * 热量绑定在武器上，weapon 为 null 时不操作。
      */
     public static void doCool(Player player, ItemStack weapon) {
         if (!GunSystemConfig.isSystemEnabled(player, "overheat")) return;
+        if (weapon == null) return;
 
-        HeatState state = getState(player);
         long now = currentTick(player);
+        long penaltyUntil = getPDCLong(weapon, KEY_PENALTY);
 
         // 过热惩罚倒计时
-        if (state.penaltyUntilTick > 0) {
-            if (now >= state.penaltyUntilTick) {
-                state.penaltyUntilTick = 0;
-                state.heat = 0; // 过热后完全冷却
+        if (penaltyUntil > 0) {
+            if (now >= penaltyUntil) {
+                setPDCLong(weapon, KEY_PENALTY, 0);
+                setPDC(weapon, KEY_HEAT, 0);
                 player.sendActionBar(Component.text("冷却完成", NamedTextColor.GREEN));
             }
             return;
         }
 
-        if (state.heat <= 0) return;
+        double heat = getPDC(weapon, KEY_HEAT);
+        if (heat <= 0) return;
 
         // 冷却系数：冷却速率/秒
-        double coolRate;
-        if (weapon != null) {
-            coolRate = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_COOL_RATE);
-            // 开镜冷却加成
-            if (AdsManager.isActive(player)) {
-                double adsBonus = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_ADS_COOL_BONUS);
-                coolRate *= (1.0 + adsBonus / 100.0);
-            }
-        } else {
-            coolRate = 10.0; // 默认冷却速率
+        double coolRate = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_COOL_RATE);
+        // 开镜冷却加成
+        if (AdsManager.isActive(player)) {
+            double adsBonus = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_HEAT_ADS_COOL_BONUS);
+            coolRate *= (1.0 + adsBonus / 100.0);
         }
 
-        state.heat = Math.max(0, state.heat - coolRate / 20.0);
+        heat = Math.max(0, heat - coolRate / 20.0);
+        setPDC(weapon, KEY_HEAT, heat);
     }
 
     /* ──────── 惩罚倍率 ──────── */
@@ -182,7 +183,6 @@ public class HeatSystem {
 
     /**
      * 获取热量提供的故障率加成（%）。
-     * 原 OverheatManager.getMalfunctionBonus 逻辑迁移。
      */
     public static double getMalfunctionBonus(Player player, ItemStack weapon) {
         if (!GunSystemConfig.isSystemEnabled(player, "overheat")) return 0;
@@ -209,18 +209,51 @@ public class HeatSystem {
     /* ──────── 状态查询 ──────── */
 
     /** 是否处于过热惩罚中 */
-    public static boolean isPenaltyActive(Player player) {
-        return isPenaltyActive(player, states.get(player.getUniqueId()));
+    public static boolean isPenaltyActive(Player player, ItemStack weapon) {
+        if (weapon == null) return false;
+        long penaltyUntil = getPDCLong(weapon, KEY_PENALTY);
+        if (penaltyUntil <= 0) return false;
+        return currentTick(player) < penaltyUntil;
     }
 
-    private static boolean isPenaltyActive(Player player, HeatState state) {
-        if (state == null || state.penaltyUntilTick <= 0) return false;
-        return currentTick(player) < state.penaltyUntilTick;
-    }
-
-    /** 清除玩家状态 */
+    /**
+     * 清除玩家状态（已废弃——热量存储在武器 PDC 中，不再需要清理玩家状态）。
+     * 保留方法签名以兼容现有调用，方法体为空。
+     */
     public static void remove(Player player) {
-        states.remove(player.getUniqueId());
+        // 热量状态存储在武器 PDC 中，无需清理玩家状态
+    }
+
+    /* ──────── PDC 工具 ──────── */
+
+    private static double getPDC(ItemStack item, NamespacedKey key) {
+        if (item == null || !item.hasItemMeta()) return 0;
+        Double val = item.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.DOUBLE);
+        return val != null ? val : 0;
+    }
+
+    private static long getPDCLong(ItemStack item, NamespacedKey key) {
+        if (item == null || !item.hasItemMeta()) return 0;
+        Long val = item.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.LONG);
+        return val != null ? val : 0;
+    }
+
+    private static void setPDC(ItemStack item, NamespacedKey key, double value) {
+        if (item == null) return;
+        ItemMeta meta = item.hasItemMeta() ? item.getItemMeta()
+            : org.bukkit.Bukkit.getItemFactory().getItemMeta(item.getType());
+        if (meta == null) return;
+        meta.getPersistentDataContainer().set(key, PersistentDataType.DOUBLE, value);
+        item.setItemMeta(meta);
+    }
+
+    private static void setPDCLong(ItemStack item, NamespacedKey key, long value) {
+        if (item == null) return;
+        ItemMeta meta = item.hasItemMeta() ? item.getItemMeta()
+            : org.bukkit.Bukkit.getItemFactory().getItemMeta(item.getType());
+        if (meta == null) return;
+        meta.getPersistentDataContainer().set(key, PersistentDataType.LONG, value);
+        item.setItemMeta(meta);
     }
 
     private static long currentTick(Player player) {

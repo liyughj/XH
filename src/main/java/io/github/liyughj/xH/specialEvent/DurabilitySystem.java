@@ -215,6 +215,14 @@ public class DurabilitySystem {
         double current = getDurability(weapon);
         setDurability(weapon, Math.min(max, current + amount));
         incRepairCount(weapon);
+        LoreManager.refreshGunLore(weapon);
+    }
+
+    /** 完美修复（恢复满耐久），并增加维修次数 */
+    public static void setDurabilityFullAndCount(ItemStack weapon) {
+        setDurability(weapon, getMaxDurability(weapon));
+        incRepairCount(weapon);
+        LoreManager.refreshGunLore(weapon);
     }
 
     /** 是否已破损 */

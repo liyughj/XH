@@ -126,10 +126,8 @@ public class AnvilRepairManager {
         RepairMaterialConfig cfg = getRepairMaterial(repairItem.getType(), gun);
         if (cfg == null) return gun;
 
-        double max = DurabilitySystem.getMaxDurability(gun);
-
         if (cfg.perfectRepair) {
-            DurabilitySystem.setDurability(gun, max);
+            DurabilitySystem.setDurabilityFullAndCount(gun);
         } else {
             double amount = cfg.repairPerItem;
             DurabilitySystem.repair(gun, amount);

@@ -284,8 +284,6 @@ public class GunItemConfig {
             "",
             "--- 故障系统 ---",
             "  gun_malfunc_base_chance     基础故障率（%）",
-            "  gun_malfunc_heat_factor     热量故障因子（%）",
-            "  gun_malfunc_dura_factor     耐久故障因子（%）",
             "  gun_malfunc_jam_clear_ticks 卡壳排除时间（tick）",
             "  gun_malfunc_cata_damage     炸膛伤害",
             "  gun_malfunc_cata_dura_loss  炸膛耐久损失",
