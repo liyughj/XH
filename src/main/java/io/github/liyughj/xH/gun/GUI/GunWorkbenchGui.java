@@ -8,6 +8,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -18,9 +19,9 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 import static io.github.liyughj.xH.gun.GUI.GuiUtils.*;
 
@@ -156,6 +157,15 @@ public class GunWorkbenchGui implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (!holder.playerId.equals(player.getUniqueId())) return;
 
+        /* Bug 2 修复：拖拽只能放入材料槽，放入其他槽取消 */
+        for (int dragSlot : event.getRawSlots()) {
+            boolean isMaterial = false;
+            for (int ms : MATERIAL_SLOTS) {
+                if (dragSlot == ms) { isMaterial = true; break; }
+            }
+            if (!isMaterial) { event.setCancelled(true); return; }
+        }
+
         Inventory inv = event.getInventory();
         Bukkit.getScheduler().runTask(Bukkit.getPluginManager().getPlugin("XH"),
             () -> updatePreview(inv));
@@ -203,6 +213,7 @@ public class GunWorkbenchGui implements Listener {
             case "gun" -> GunSystemConfig.gun().createGunItem(def.outputId);
             case "ammo" -> createAmmoPreview(def.outputId);
             case "mag" -> GunSystemConfig.gun().createMagazineItem(def.outputId);
+            case "custom" -> createCustomItem(def);
             default -> null;
         };
         if (preview == null) {
@@ -234,6 +245,48 @@ public class GunWorkbenchGui implements Listener {
         return ammo.createAmmoItemStack(parts[0], parts[1]);
     }
 
+    /**
+     * custom 类型：创建自定义 RPG 属性物品。
+     * 配方中指定 Material + displayName + PDC 键值对。
+     */
+    private ItemStack createCustomItem(GunWorkbenchConfig.RecipeDef def) {
+        Material mat = Material.getMaterial(def.outputMaterial.toUpperCase());
+        if (mat == null) return null;
+
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return item;
+
+        /* 显示名 */
+        if (!def.outputDisplayName.isEmpty()) {
+            meta.displayName(Component.text(def.outputDisplayName));
+        }
+
+        /* 写入 PDC 属性（支持 RPG 属性格式） */
+        for (Map.Entry<String, String> e : def.outputAttrs.entrySet()) {
+            /* 尝试解析为 double → 存 DOUBLE 类型 */
+            try {
+                double dv = Double.parseDouble(e.getValue());
+                meta.getPersistentDataContainer().set(
+                    new NamespacedKey("xh", e.getKey()), PersistentDataType.DOUBLE, dv);
+                continue;
+            } catch (NumberFormatException ignored) {}
+            /* 尝试解析为 int → 存 INTEGER 类型 */
+            try {
+                int iv = Integer.parseInt(e.getValue());
+                meta.getPersistentDataContainer().set(
+                    new NamespacedKey("xh", e.getKey()), PersistentDataType.INTEGER, iv);
+                continue;
+            } catch (NumberFormatException ignored) {}
+            /* 默认存 STRING */
+            meta.getPersistentDataContainer().set(
+                new NamespacedKey("xh", e.getKey()), PersistentDataType.STRING, e.getValue());
+        }
+
+        item.setItemMeta(meta);
+        return item;
+    }
+
     /** 更新合成按钮状态 */
     private void updateCraftButton(Inventory inv, GuildRecipe recipe) {
         if (recipe != null) {
@@ -254,9 +307,14 @@ public class GunWorkbenchGui implements Listener {
         GunWorkbenchConfig.RecipeDef def = recipe.def;
         for (int i = 0; i < MATERIAL_SLOTS.length; i++) {
             if (def.materials.containsKey(i)) {
-                ItemStack slotItem = inv.getItem(MATERIAL_SLOTS[i]);
+                int ms = MATERIAL_SLOTS[i];
+                ItemStack slotItem = inv.getItem(ms);
                 if (slotItem != null && slotItem.getAmount() > 0) {
                     slotItem.setAmount(slotItem.getAmount() - 1);
+                    /* Bug 1 修复：消耗完清空槽位，防止 ghost item */
+                    if (slotItem.getAmount() <= 0) {
+                        inv.setItem(ms, null);
+                    }
                 }
             }
         }
@@ -269,10 +327,12 @@ public class GunWorkbenchGui implements Listener {
                 AmmoConfig ammo = GunSystemConfig.ammo();
                 if (ammo == null || parts.length != 2) yield null;
                 ItemStack a = ammo.createAmmoItemStack(parts[0], parts[1]);
-                if (a != null) a.setAmount(16);
+                /* Bug 4 修复：弹药数量用配方 output_amount 配置，默认 16 */
+                if (a != null) a.setAmount(def.outputAmount > 0 ? def.outputAmount : 16);
                 yield a;
             }
             case "mag" -> GunSystemConfig.gun().createMagazineItem(def.outputId);
+            case "custom" -> createCustomItem(def);
             default -> null;
         };
 

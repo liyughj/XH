@@ -52,8 +52,12 @@ public class GunWorkbenchConfig {
      * @return 匹配到的配方，无匹配返回 null
      */
     public RecipeDef matchRecipe(Material[] grid) {
+        if (grid.length != 25) return null;
+
         outer:
         for (RecipeDef recipe : recipes) {
+            /* 配方必须有至少 1 个材料 */
+            if (recipe.materials.isEmpty()) continue;
             if (recipe.materials.size() > grid.length) continue;
 
             for (int i = 0; i < grid.length; i++) {
@@ -95,6 +99,19 @@ public class GunWorkbenchConfig {
             String name = cs.getString("name", key);
             String type = cs.getString("type", "gun");
             String outputId = cs.getString("output_id", key);
+            int outputAmount = cs.getInt("output_amount", 1);
+
+            /* custom 类型：指定 output_material */
+            String outputMaterial = cs.getString("output_material", "");
+            String outputDisplayName = cs.getString("output_display_name", name);
+            /* custom 属性写入（PDC key → value） */
+            Map<String, String> outputAttrs = new HashMap<>();
+            ConfigurationSection attrSection = cs.getConfigurationSection("output_attrs");
+            if (attrSection != null) {
+                for (String attrKey : attrSection.getKeys(false)) {
+                    outputAttrs.put(attrKey, attrSection.getString(attrKey));
+                }
+            }
 
             Map<Integer, Material> materials = new HashMap<>();
             ConfigurationSection matSection = cs.getConfigurationSection("materials");
@@ -110,7 +127,8 @@ public class GunWorkbenchConfig {
                     } catch (NumberFormatException ignored) {}
                 }
             }
-            recipes.add(new RecipeDef(key, name, type, outputId, materials));
+            recipes.add(new RecipeDef(key, name, type, outputId, outputAmount,
+                outputMaterial, outputDisplayName, outputAttrs, materials));
         }
     }
 
@@ -163,18 +181,32 @@ public class GunWorkbenchConfig {
         public final String id;
         /** 显示名称 */
         public final String name;
-        /** 输出类型: gun / ammo / mag / attachment */
+        /** 输出类型: gun / ammo / mag / custom (RPG属性物品) */
         public final String type;
         /** 输出ID（gun_id / caliber:ammoType / mag_id） */
         public final String outputId;
+        /** 输出数量（弹药默认16，其他默认1） */
+        public final int outputAmount;
+        /** custom 类型：输出物品的 Material */
+        public final String outputMaterial;
+        /** custom 类型：输出物品显示名 */
+        public final String outputDisplayName;
+        /** custom 类型：写入物品 PDC 的属性 (key → value string) */
+        public final Map<String, String> outputAttrs;
         /** 索引(0-24) → Material */
         public final Map<Integer, Material> materials;
 
-        RecipeDef(String id, String name, String type, String outputId, Map<Integer, Material> materials) {
+        RecipeDef(String id, String name, String type, String outputId, int outputAmount,
+                  String outputMaterial, String outputDisplayName, Map<String, String> outputAttrs,
+                  Map<Integer, Material> materials) {
             this.id = id;
             this.name = name;
             this.type = type;
             this.outputId = outputId;
+            this.outputAmount = outputAmount;
+            this.outputMaterial = outputMaterial;
+            this.outputDisplayName = outputDisplayName;
+            this.outputAttrs = outputAttrs;
             this.materials = materials;
         }
     }
