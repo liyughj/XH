@@ -146,6 +146,9 @@ public final class XH extends JavaPlugin {
         /* 初始化弹药配置（ammo.yml） */
         io.github.liyughj.xH.gun.AmmoConfig ammoConfig = new io.github.liyughj.xH.gun.AmmoConfig(this);
 
+        /* 初始化枪械工作台配方配置（guns/gun-recipes.yml） */
+        io.github.liyughj.xH.gun.GunWorkbenchConfig workbenchConfig = new io.github.liyughj.xH.gun.GunWorkbenchConfig(this);
+
         /* 初始化全局系统配置 */
         io.github.liyughj.xH.gun.GunSystemConfig.init(gunItemConfig, ammoConfig);
 
@@ -170,11 +173,16 @@ public final class XH extends JavaPlugin {
         /* 注册弹夹GUI监听器 */
         getServer().getPluginManager().registerEvents(new io.github.liyughj.xH.gun.GUI.MagazineGUI(), this);
 
+        /* 注册枪械工作台GUI监听器 */
+        io.github.liyughj.xH.gun.GUI.GunWorkbenchGui workbenchGui = new io.github.liyughj.xH.gun.GUI.GunWorkbenchGui(workbenchConfig);
+        getServer().getPluginManager().registerEvents(workbenchGui, this);
+
         /* 启动枪械定时任务（每秒恢复扩散） */
         io.github.liyughj.xH.gun.GunTickTask.start(this);
 
         /* 注册命令执行器 */
         XHCommand cmd = new XHCommand(this);
+        cmd.setWorkbenchGui(workbenchGui);
         getCommand("xh").setExecutor(cmd);
         getCommand("xh").setTabCompleter(cmd);
 

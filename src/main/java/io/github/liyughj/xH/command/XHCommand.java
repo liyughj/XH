@@ -8,6 +8,7 @@ import io.github.liyughj.xH.enchantmentLevel.EnchantmentLevelDisplay;
 import io.github.liyughj.xH.enchantmentLevel.SpecialEffects;
 import io.github.liyughj.xH.gun.AmmoConfig;
 import io.github.liyughj.xH.gun.GunSystemConfig;
+import io.github.liyughj.xH.gun.GUI.GunWorkbenchGui;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -25,9 +26,15 @@ import java.util.List;
 public class XHCommand implements CommandExecutor, TabCompleter {
 
     private final XH plugin;
+    private GunWorkbenchGui workbenchGui;
 
     public XHCommand(XH plugin) {
         this.plugin = plugin;
+    }
+
+    /** 注册工作台GUI实例，用于 /xh bench 命令 */
+    public void setWorkbenchGui(GunWorkbenchGui gui) {
+        this.workbenchGui = gui;
     }
 
     @Override
@@ -47,6 +54,8 @@ public class XHCommand implements CommandExecutor, TabCompleter {
                 return handleLore(sender, args);
             case "give":
                 return handleGive(sender, args);
+            case "bench":
+                return handleBench(sender);
             case "debug":
                 return handleDebug(sender);
             case "restore":
@@ -69,7 +78,7 @@ public class XHCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             // 一级子命令
             String prefix = args[0].toLowerCase();
-            for (String cmd : new String[]{"debug", "give", "help", "lore", "reload", "restore"}) {
+            for (String cmd : new String[]{"bench", "debug", "give", "help", "lore", "reload", "restore"}) {
                 if (cmd.startsWith(prefix)) completions.add(cmd);
             }
             return completions;
@@ -212,6 +221,21 @@ public class XHCommand implements CommandExecutor, TabCompleter {
         return true;
     }
 
+    /* ==================== /xh bench ==================== */
+
+    private boolean handleBench(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§c此命令只能由玩家执行");
+            return true;
+        }
+        if (workbenchGui == null) {
+            sender.sendMessage("§c枪械工作台未初始化");
+            return true;
+        }
+        workbenchGui.open(player);
+        return true;
+    }
+
     /* ==================== /xh debug ==================== */
 
     private boolean handleDebug(CommandSender sender) {
@@ -311,6 +335,7 @@ public class XHCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/xh give gun <ID> §7- 获取枪械");
         sender.sendMessage("§e/xh give ammo <口径> <弹种> [数量] §7- 获取弹药");
         sender.sendMessage("§e/xh give mag <ID> §7- 获取弹匣");
+        sender.sendMessage("§e/xh bench §7- 打开枪械工作台");
         sender.sendMessage("§e/xh reload §7- 重载插件配置");
         sender.sendMessage("§e/xh debug §7- 切换调试模式（显示枪械属性/附魔/RPG效果）");
         sender.sendMessage("§e/xh restore §7- 修复手中被改名的RPG武器/工具");
