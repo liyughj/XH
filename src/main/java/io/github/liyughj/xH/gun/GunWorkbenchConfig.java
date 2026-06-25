@@ -52,8 +52,6 @@ public class GunWorkbenchConfig {
      * @return 匹配到的配方，无匹配返回 null
      */
     public RecipeDef matchRecipe(Material[] grid) {
-        if (grid.length != 25) return null;
-
         outer:
         for (RecipeDef recipe : recipes) {
             /* 配方必须有至少 1 个材料 */
@@ -99,7 +97,7 @@ public class GunWorkbenchConfig {
             String name = cs.getString("name", key);
             String type = cs.getString("type", "gun");
             String outputId = cs.getString("output_id", key);
-            int outputAmount = cs.getInt("output_amount", 1);
+            int outputAmount = cs.getInt("output_amount", 0);
 
             /* custom 类型：指定 output_material */
             String outputMaterial = cs.getString("output_material", "");

@@ -157,8 +157,9 @@ public class GunWorkbenchGui implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (!holder.playerId.equals(player.getUniqueId())) return;
 
-        /* Bug 2 修复：拖拽只能放入材料槽，放入其他槽取消 */
+        /* 拖拽只能涉及材料槽（忽略背包槽） */
         for (int dragSlot : event.getRawSlots()) {
+            if (dragSlot >= GUI_SIZE) continue; // 玩家背包槽放行
             boolean isMaterial = false;
             for (int ms : MATERIAL_SLOTS) {
                 if (dragSlot == ms) { isMaterial = true; break; }
@@ -203,7 +204,7 @@ public class GunWorkbenchGui implements Listener {
         GunWorkbenchConfig.RecipeDef def = config.matchRecipe(grid);
         if (def == null) return null;
 
-        return new GuildRecipe(def, grid.clone());
+        return new GuildRecipe(def);
     }
 
     /** 创建配方输出预览物品 */
@@ -374,14 +375,12 @@ public class GunWorkbenchGui implements Listener {
 
     /* ==================== 内部数据类 ==================== */
 
-    /** 匹配到的配方 + 原始材料快照 */
+    /** 匹配到的配方 */
     private static class GuildRecipe {
         final GunWorkbenchConfig.RecipeDef def;
-        final Material[] grid;
 
-        GuildRecipe(GunWorkbenchConfig.RecipeDef def, Material[] grid) {
+        GuildRecipe(GunWorkbenchConfig.RecipeDef def) {
             this.def = def;
-            this.grid = grid;
         }
     }
 }
