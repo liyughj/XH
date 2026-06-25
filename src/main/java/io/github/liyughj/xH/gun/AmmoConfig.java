@@ -157,6 +157,7 @@ public class AmmoConfig {
     public Set<String> getCaliberIds() { return Collections.unmodifiableSet(calibers.keySet()); }
 
     /** 根据口径+弹种ID创建弹药 ItemStack */
+    @SuppressWarnings("deprecation") /* setCustomModelData(Integer) 在 1.21.5+ 弃用，功能正常 */
     public ItemStack createAmmoItemStack(String caliberId, String ammoTypeId) {
         caliberId = normalizeCaliberId(caliberId);
         AmmoTypeDef def = ammoTypes.get(ammoTypeId);

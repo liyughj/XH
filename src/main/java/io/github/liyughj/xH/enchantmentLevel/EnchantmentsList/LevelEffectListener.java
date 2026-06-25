@@ -967,6 +967,7 @@ public class LevelEffectListener implements Listener {
      * 激流：玩家手持激流三叉戟，在水中/雨中近战攻击时增加伤害。
      * 每级 +3%（默认），乘法叠加。
      */
+    @SuppressWarnings("deprecation") /* isInWaterOrRain() 在 1.21.5+ 弃用，功能正常 */
     private void applyRiptideDamage(EntityDamageByEntityEvent event, Player player) {
         ItemStack weapon = player.getInventory().getItemInMainHand();
         if (weapon == null || weapon.getType() != Material.TRIDENT) return;
@@ -1077,6 +1078,7 @@ public class LevelEffectListener implements Listener {
     /**
      * 伤害类型 → 对应的保护附魔
      */
+    @SuppressWarnings("deprecation") /* HOT_FLOOR 在 26.2 弃用，功能正常 */
     private Enchantment damageCauseToProtectionEnchant(DamageCause cause) {
         if (cause == null) return null;
         switch (cause) {

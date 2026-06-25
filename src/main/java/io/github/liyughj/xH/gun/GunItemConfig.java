@@ -920,6 +920,7 @@ public class GunItemConfig {
     public Set<String> getAllMagazineIds() { return Collections.unmodifiableSet(magazineMap.keySet()); }
 
     /** 根据 mag_id 创建弹匣 ItemStack */
+    @SuppressWarnings("deprecation") /* setCustomModelData(Integer) 在 1.21.5+ 弃用，功能正常 */
     public ItemStack createMagazineItem(String magId) {
         MagazineDef def = magazineMap.get(magId);
         if (def == null) return null;
