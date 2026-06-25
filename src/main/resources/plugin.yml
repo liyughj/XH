@@ -3,7 +3,7 @@ description: $description
 version: '${version}'
 
 main: io.github.liyughj.xH.XH
-api-version: '1.21.4'
+api-version: '26.2'
 load: POSTWORLD
 depend: [ProtocolLib]
 
