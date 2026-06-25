@@ -253,6 +253,7 @@ public class EnchantmentLevelListener implements Listener {
         if (item == null || item.getType().isAir()) return false;
         String name = item.getType().name();
         return name.endsWith("_SWORD") || name.endsWith("_AXE") ||
+               name.endsWith("_SPEAR") ||
                name.equals("TRIDENT") || name.equals("MACE");
     }
 

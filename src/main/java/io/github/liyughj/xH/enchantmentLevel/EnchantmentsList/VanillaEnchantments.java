@@ -399,7 +399,17 @@ public final class VanillaEnchantments {
     );
 
     /* ================================================================
-     *  14. 汇总列表（按注册顺序，与 EnchantmentLevelManager 一致）
+     *  14. 矛类 (Spear - 1.21.5+)
+     * ================================================================ */
+
+    /** 突进 - 刺击命中后获得短暂移速加成 */
+    public static final Info LUNGE = new Info(
+        "lunge", "突进", 3, false, Category.WEAPON_UTILITY,
+        "刺击命中后获得短暂移速加成"
+    );
+
+    /* ================================================================
+     *  15. 汇总列表（按注册顺序，与 EnchantmentLevelManager 一致）
      * ================================================================ */
 
     /** 所有附魔信息列表（按注册顺序） */
@@ -429,7 +439,9 @@ public final class VanillaEnchantments {
         /* 诅咒 */
         BINDING_CURSE, VANISHING_CURSE,
         /* 锤 */
-        DENSITY, BREACH, WIND_BURST
+        DENSITY, BREACH, WIND_BURST,
+        /* 矛 */
+        LUNGE
     ));
 
     /** Bukkit key -> Info 快速查找 */

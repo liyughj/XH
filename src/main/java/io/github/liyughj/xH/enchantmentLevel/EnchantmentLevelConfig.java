@@ -305,6 +305,7 @@ public class EnchantmentLevelConfig {
         dc.set(KEY_MAX_LEVELS + ".density", 5);
         dc.set(KEY_MAX_LEVELS + ".breach", 4);
         dc.set(KEY_MAX_LEVELS + ".wind_burst", 3);
+        dc.set(KEY_MAX_LEVELS + ".lunge", 3);
         dc.set(KEY_MAX_LEVELS + ".binding_curse", 1);
         dc.set(KEY_MAX_LEVELS + ".vanishing_curse", 1);
 
@@ -380,6 +381,7 @@ public class EnchantmentLevelConfig {
             "  TRIDENT:  穿刺/忠诚/激流/引雷",
             "  FISHING:  海之眷顾/饵钓",
             "  MACE:     致密/破甲/风爆",
+            "  SPEAR:    突进",
             "  UNIVERSAL: 耐久/经验修补",
             "  CURSE:    绑定诅咒/消失诅咒",
             "",
@@ -699,7 +701,8 @@ public class EnchantmentLevelConfig {
         return switch (key) {
             /* 近战武器 */
             case "SHARPNESS", "SMITE", "BANE_OF_ARTHROPODS",
-                 "SWEEPING_EDGE", "FIRE_ASPECT", "KNOCKBACK", "LOOTING" -> ExpCategory.WEAPON;
+                 "SWEEPING_EDGE", "FIRE_ASPECT", "KNOCKBACK", "LOOTING",
+                 "LUNGE" -> ExpCategory.WEAPON;
 
             /* 工具 */
             case "EFFICIENCY", "SILK_TOUCH", "FORTUNE" -> ExpCategory.TOOL;

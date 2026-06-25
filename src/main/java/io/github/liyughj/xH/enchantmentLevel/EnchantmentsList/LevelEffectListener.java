@@ -152,6 +152,9 @@ public class LevelEffectListener implements Listener {
     /** 引雷重入防护（防止 world.strikeLightning() 递归触发 LightningStrikeEvent） */
     private final ThreadLocal<Boolean> inChannelingStrike = ThreadLocal.withInitial(() -> false);
 
+    /** 击退剥离：LOWEST 捕获目标速度，HIGH 中用它代替原版击退（防止双倍击退） */
+    private final Map<UUID, Vector> preKnockbackVelocities = new HashMap<>();
+
     /** 引雷待处理：投掷命中的玩家 UUID → 引雷等级 */
     private final Map<UUID, Integer> pendingChanneling = new HashMap<>();
 
@@ -371,6 +374,7 @@ public class LevelEffectListener implements Listener {
 
         stripVanillaWeaponDamage(event, meta, target);
         stripVanillaFireAspect(meta, target);
+        stripVanillaKnockback(meta, target);
     }
 
     /**
@@ -484,6 +488,21 @@ public class LevelEffectListener implements Listener {
         target.setFireTicks(0);
     }
 
+    /**
+     * LOWEST 优先级：捕获目标当前速度（原版击退尚未应用），
+     * 供 HIGH 阶段的 applyKnockback 替换原版击退。
+     * 只在自定义击退效果生效时才捕获，避免不必要的 Map 膨胀。
+     */
+    private void stripVanillaKnockback(ItemMeta meta, LivingEntity target) {
+        int level = meta.getEnchantLevel(Enchantment.KNOCKBACK);
+        if (level <= 0) return;
+
+        String key = Enchantment.KNOCKBACK.getKey().getKey();
+        if (!levelConfig.hasKnockbackEffect(key)) return;
+
+        preKnockbackVelocities.put(target.getUniqueId(), target.getVelocity().clone());
+    }
+
     /* ==================== 第二步：应用自定义附魔效果 ==================== */
 
     /**
@@ -524,6 +543,7 @@ public class LevelEffectListener implements Listener {
         applyKnockback(meta, player, target, player);
         applyBreachPenetration(event, meta);
         applyWindBurst(event, meta, player);
+        applyLunge(meta, player);
     }
 
     private void applyWeaponDamageBonus(EntityDamageByEntityEvent event, ItemMeta meta, LivingEntity target, Player player) {
@@ -719,9 +739,15 @@ public class LevelEffectListener implements Listener {
 
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!target.isValid() || target.isDead()) return;
-            target.setVelocity(target.getVelocity()
+
+            /* 取回 LOWEST 阶段捕获的原始速度（原版击退尚未应用） */
+            Vector baseVel = preKnockbackVelocities.remove(target.getUniqueId());
+            if (baseVel == null) baseVel = target.getVelocity(); // fallback
+
+            /* 自定义击退 = 原始速度 + 自定义击退向量（不叠加原版） */
+            target.setVelocity(baseVel.clone()
                 .add(direction.multiply(velocityStrength))
-                .setY(Math.min(target.getVelocity().getY() + 0.4, 0.4)));
+                .setY(Math.min(baseVel.getY() + 0.4, 0.4)));
         });
     }
 
@@ -885,6 +911,35 @@ public class LevelEffectListener implements Listener {
                     PotionEffectType.SLOW_FALLING,
                     (int) slowFallTicks, 0, true, false));
         }
+    }
+
+    /**
+     * 突进：持矛刺击命中后获得短暂移速加成。
+     * 每级 +1 级速度（默认 Speed I），持续 3 秒/级（默认）。
+     * 仅对持有 Lunge 附魔的矛生效（通过 Enchantment.LUNGE 检测）。
+     */
+    private void applyLunge(ItemMeta meta, Player player) {
+        int level = meta.getEnchantLevel(Enchantment.LUNGE);
+        if (level <= 0) return;
+
+        String key = "lunge";
+        int speedAmplifier = levelConfig.getLungeSpeedAmplifier(key);
+        int durationPerLevel = levelConfig.getLungeDurationTicksPerLevel(key);
+        if (durationPerLevel <= 0) return;
+
+        /* 总增幅 = 每级增幅 × 等级 + bonus */
+        int totalAmplifier = speedAmplifier * level
+            + levelConfig.getLungeSpeedAmplifierBonus(key);
+        int totalDuration = durationPerLevel * level
+            + levelConfig.getLungeDurationTicksBonus(key);
+
+        /* 添加移速药水效果（隐藏粒子、不显示图标） */
+        player.addPotionEffect(
+            new PotionEffect(
+                PotionEffectType.SPEED,
+                totalDuration,
+                totalAmplifier,
+                true, false));
     }
 
     /**

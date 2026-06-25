@@ -65,6 +65,8 @@ public class LevelConfig {
     private static final double DEFAULT_BREACH_ARMOR_BYPASS_PERCENT = 15.0;  // 破甲每级护甲穿透（%）
     private static final double DEFAULT_WIND_BURST_HEIGHT_PER_LEVEL = 2.0;   // 风爆每级弹起高度（格）
     private static final double DEFAULT_WIND_BURST_SLOW_FALL_TICKS = 20;     // 风爆每级缓降时长（tick）
+    private static final int DEFAULT_LUNGE_SPEED_AMPLIFIER = 0;              // 突进每级速度增幅（0=Speed I, 1=Speed II）
+    private static final int DEFAULT_LUNGE_DURATION_TICKS = 60;              // 突进每级持续时间（tick, 60=3秒）
 
     /* 配置键名 */
     private static final String KEY_DAMAGE_PERCENT = "damage-percent-per-level";
@@ -98,6 +100,8 @@ public class LevelConfig {
     private static final String KEY_BREACH_ARMOR_BYPASS = "breach-armor-bypass-percent-per-level";
     private static final String KEY_WIND_BURST_HEIGHT = "wind-burst-height-per-level";
     private static final String KEY_WIND_BURST_SLOW_FALL = "wind-burst-slow-fall-ticks-per-level";
+    private static final String KEY_LUNGE_SPEED_AMPLIFIER = "lunge-speed-amplifier";
+    private static final String KEY_LUNGE_DURATION_TICKS = "lunge-duration-ticks-per-level";
 
     private final JavaPlugin plugin;
     private FileConfiguration config;
@@ -303,6 +307,8 @@ public class LevelConfig {
         public final double breachArmorBypassPercentPerLevel;
         public final double windBurstHeightPerLevel;
         public final double windBurstSlowFallTicksPerLevel;
+        public final int lungeSpeedAmplifier;
+        public final int lungeDurationTicksPerLevel;
 
         public EnchantEffect(String enchantKey) {
             this.enchantKey = enchantKey;
@@ -337,6 +343,8 @@ public class LevelConfig {
             this.breachArmorBypassPercentPerLevel = 0;
             this.windBurstHeightPerLevel = 0;
             this.windBurstSlowFallTicksPerLevel = 0;
+            this.lungeSpeedAmplifier = 0;
+            this.lungeDurationTicksPerLevel = 0;
         }
 
         public EnchantEffect(String enchantKey, double damagePercentPerLevel, double sweepDamagePercentPerLevel,
@@ -356,7 +364,8 @@ public class LevelConfig {
                                  double lureChancePerLevel,
                                  double densityDamagePercentPerBlock, double densityMaxMultiplierPercent,
                                  double breachArmorBypassPercentPerLevel,
-                                 double windBurstHeightPerLevel, double windBurstSlowFallTicksPerLevel) {
+                                 double windBurstHeightPerLevel, double windBurstSlowFallTicksPerLevel,
+                                 int lungeSpeedAmplifier, int lungeDurationTicksPerLevel) {
             this.enchantKey = enchantKey;
             this.damagePercentPerLevel = damagePercentPerLevel;
             this.sweepDamagePercentPerLevel = sweepDamagePercentPerLevel;
@@ -389,6 +398,8 @@ public class LevelConfig {
             this.breachArmorBypassPercentPerLevel = breachArmorBypassPercentPerLevel;
             this.windBurstHeightPerLevel = windBurstHeightPerLevel;
             this.windBurstSlowFallTicksPerLevel = windBurstSlowFallTicksPerLevel;
+            this.lungeSpeedAmplifier = lungeSpeedAmplifier;
+            this.lungeDurationTicksPerLevel = lungeDurationTicksPerLevel;
         }
     }
 
@@ -521,6 +532,8 @@ public class LevelConfig {
         cfg.set("breach." + KEY_BREACH_ARMOR_BYPASS, DEFAULT_BREACH_ARMOR_BYPASS_PERCENT);
         cfg.set("wind_burst." + KEY_WIND_BURST_HEIGHT, DEFAULT_WIND_BURST_HEIGHT_PER_LEVEL);
         cfg.set("wind_burst." + KEY_WIND_BURST_SLOW_FALL, DEFAULT_WIND_BURST_SLOW_FALL_TICKS);
+        cfg.set("lunge." + KEY_LUNGE_SPEED_AMPLIFIER, DEFAULT_LUNGE_SPEED_AMPLIFIER);
+        cfg.set("lunge." + KEY_LUNGE_DURATION_TICKS, DEFAULT_LUNGE_DURATION_TICKS);
 
         List<String> headerLines = Arrays.asList(
             "附魔等级效果配置文件",
@@ -649,6 +662,10 @@ public class LevelConfig {
                 effect.windBurstHeightPerLevel);
             double windBurstSlowFall = config.getDouble(key + "." + KEY_WIND_BURST_SLOW_FALL,
                 effect.windBurstSlowFallTicksPerLevel);
+            int lungeSpeedAmplifier = config.getInt(key + "." + KEY_LUNGE_SPEED_AMPLIFIER,
+                effect.lungeSpeedAmplifier);
+            int lungeDurationTicks = config.getInt(key + "." + KEY_LUNGE_DURATION_TICKS,
+                effect.lungeDurationTicksPerLevel);
 
             effects.put(normalizedKey, new EnchantEffect(key,
                 damagePercent, sweepPercent, sweepRange, fireTicks, knockbackBlocks,
@@ -661,7 +678,8 @@ public class LevelConfig {
                 multishotExtraArrows, lureChance,
                 densityDamagePerBlock, densityMaxMultiplier,
                 breachArmorBypass,
-                windBurstHeight, windBurstSlowFall));
+                windBurstHeight, windBurstSlowFall,
+                lungeSpeedAmplifier, lungeDurationTicks));
         }
     }
 
@@ -1021,6 +1039,34 @@ public class LevelConfig {
     public double getWindBurstSlowFallTicksPerLevel(String enchantKey) {
         EnchantEffect e = effects.get(enchantKey.toUpperCase());
         return e != null ? e.windBurstSlowFallTicksPerLevel : 0.0;
+    }
+
+    public int getLungeSpeedAmplifier(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.lungeSpeedAmplifier : 0;
+    }
+
+    public int getLungeDurationTicksPerLevel(String enchantKey) {
+        EnchantEffect e = effects.get(enchantKey.toUpperCase());
+        return e != null ? e.lungeDurationTicksPerLevel : 60;
+    }
+
+    /** 突进移速增幅 bonus（逐级增幅） */
+    public void setBonusLungeSpeedAmplifier(String enchantKey, int bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "lunge_speed"), (double) bonus);
+    }
+
+    public int getLungeSpeedAmplifierBonus(String enchantKey) {
+        return (int) getBonus(enchantKey, "lunge_speed");
+    }
+
+    /** 突进持续时间 bonus（tick） */
+    public void setBonusLungeDurationTicks(String enchantKey, int bonus) {
+        bonusOverrides.put(bonusKey(enchantKey, "lunge_duration"), (double) bonus);
+    }
+
+    public int getLungeDurationTicksBonus(String enchantKey) {
+        return (int) getBonus(enchantKey, "lunge_duration");
     }
 
     /** 致密每格伤害 bonus（%） */

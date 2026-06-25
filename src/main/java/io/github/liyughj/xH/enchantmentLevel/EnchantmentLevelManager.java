@@ -438,6 +438,7 @@ public class EnchantmentLevelManager {
             case "density" -> 40;            // 致密
             case "breach" -> 41;             // 破甲
             case "wind_burst" -> 42;         // 风爆
+            case "lunge" -> 43;              // 突进
             default -> 100;                  // 未知附魔放最后
         };
     }

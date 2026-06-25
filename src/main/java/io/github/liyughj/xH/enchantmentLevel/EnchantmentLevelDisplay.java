@@ -512,6 +512,14 @@ public class EnchantmentLevelDisplay implements Listener {
                 if (wh > 0 && ws > 0)
                     desc = "+" + fmt(wh) + " 格弹飞, " + fmt(ws) + "s 缓降";
                 break;
+
+            /* ---- 突进 ---- */
+            case "lunge":
+                int sa = levelConfig.getLungeSpeedAmplifier(key) * level;
+                double dt = levelConfig.getLungeDurationTicksPerLevel(key) * level / 20.0;
+                if (dt > 0)
+                    desc = "速度 " + EnchantmentLevelManager.toRoman(sa + 1) + ", " + fmt(dt) + "s 持续";
+                break;
         }
 
         if (desc == null) return null;
