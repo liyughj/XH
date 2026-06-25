@@ -56,7 +56,7 @@ public class GunWorkbenchGui implements Listener {
 
     /** 右侧分隔玻璃占用的槽位 */
     private static final int[] GLASS_SLOTS = {
-        5,6,7,8, 14,15,16,17, 23,25,26, 32,33,34,35, 41,42,43,44, 46,47,48,50,51
+        5,6,7,8, 14,15,16,17, 23,25,26, 32,33,34,35, 41,42,43,44, 46,47,48,50,51,52
     };
 
     private final GunWorkbenchConfig config;
@@ -64,6 +64,9 @@ public class GunWorkbenchGui implements Listener {
     public GunWorkbenchGui(GunWorkbenchConfig config) {
         this.config = config;
     }
+
+    /** 获取配方配置（供 reload 使用） */
+    public GunWorkbenchConfig getConfig() { return config; }
 
     /* ==================== 打开 GUI ==================== */
 
@@ -102,8 +105,13 @@ public class GunWorkbenchGui implements Listener {
         int slot = event.getRawSlot();
         Inventory inv = event.getInventory();
 
-        /* 点击 GUI 外部（玩家背包）→ 允许 */
-        if (slot < 0 || slot >= GUI_SIZE) return;
+        /* 点击 GUI 外部（玩家背包）→ 允许，延迟更新预览 */
+        if (slot < 0 || slot >= GUI_SIZE) {
+            final Inventory fInv = inv;
+            Bukkit.getScheduler().runTask(Bukkit.getPluginManager().getPlugin("XH"),
+                () -> updatePreview(fInv));
+            return;
+        }
 
         /* 底部按钮 */
         if (slot == BTN_CLEAR) {

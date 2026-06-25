@@ -293,6 +293,9 @@ public class XHCommand implements CommandExecutor, TabCompleter {
             AmmoConfig ammo = GunSystemConfig.ammo();
             if (ammo != null) ammo.reload();
 
+            /* 重载工作台配方 */
+            if (workbenchGui != null) workbenchGui.getConfig().reload();
+
             sender.sendMessage("§aXH 插件配置重载完成！");
             plugin.getLogger().info("配置已通过命令重载 - 操作者: " + sender.getName());
         } catch (Exception e) {
