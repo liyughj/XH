@@ -151,6 +151,10 @@ public class RpgCombatListener implements Listener {
         newArrow.setGravity(arrow.hasGravity());
         copyGunPDC(arrow, newArrow);
 
+        // 将跳弹后的 BulletMeta 注册到新 Arrow（保留阻力/尾迹/衰减等弹道效果）
+        meta.setVelocity(reflected);
+        io.github.liyughj.xH.gun.BallisticsManager.registerBullet(newArrow.getUniqueId(), meta);
+
         io.github.liyughj.xH.gun.BallisticsManager.removeBullet(arrow.getUniqueId());
         arrow.remove();
     }

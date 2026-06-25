@@ -318,9 +318,12 @@ public final class SpecialWeapons {
 
             if (finalDamage > 0) {
                 target.damage(finalDamage, shooter);
-                // 击退
-                Vector kbDir = target.getLocation().toVector().subtract(center.toVector()).normalize();
-                target.setVelocity(kbDir.multiply(knockback * falloff));
+                // 击退（避免目标与爆炸中心重合时零向量 normalize 产生 NaN）
+                Vector kbDir = target.getLocation().toVector().subtract(center.toVector());
+                if (kbDir.lengthSquared() > 1.0E-6) {
+                    kbDir.normalize();
+                    target.setVelocity(kbDir.multiply(knockback * falloff));
+                }
             }
         }
 
@@ -377,8 +380,11 @@ public final class SpecialWeapons {
 
             if (finalDamage > 0) {
                 target.damage(finalDamage, shooter);
-                Vector kbDir = target.getLocation().toVector().subtract(center.toVector()).normalize();
-                target.setVelocity(kbDir.multiply(2.0 * falloff));
+                Vector kbDir = target.getLocation().toVector().subtract(center.toVector());
+                if (kbDir.lengthSquared() > 1.0E-6) {
+                    kbDir.normalize();
+                    target.setVelocity(kbDir.multiply(2.0 * falloff));
+                }
             }
         }
 

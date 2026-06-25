@@ -540,9 +540,7 @@ public enum RpgAttribute {
     GUN_SUPPRESS_AMOUNT("gun_suppress_amount", "压制强度", ValueType.PERCENT, 0.0, 500.0, 50.0, Category.GUN),
     /** 压制持续（tick），压制效果时长，20tick=1秒 */
     GUN_SUPPRESS_DURATION_TICKS("gun_suppress_duration_ticks", "压制持续", ValueType.FLAT, 0.0, Double.MAX_VALUE, 80.0, Category.GUN),
-    /* ── 耐久补充 ── */
-    /** 修理所需材料数量 */
-    GUN_REPAIR_MATERIALS("gun_repair_materials", "修理所需材料", ValueType.FLAT, 0.0, 100.0, 1.0, Category.GUN),
+
     /* ── 配件槽位 ── */
     /** 配件槽位（绝对值），bitmask编码，bit0=muzzle bit1=optic bit2=grip bit3=mag bit4=stock bit5=laser bit6=trigger */
     GUN_ATTACHMENT_SLOTS("gun_attachment_slots", "配件槽位", ValueType.FLAT, 0.0, 127.0, 127.0, Category.GUN),

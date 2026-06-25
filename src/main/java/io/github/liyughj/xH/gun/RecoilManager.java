@@ -170,15 +170,15 @@ public final class RecoilManager {
         }
 
         /* —— 水平偏向加权 —— */
+        // 偏向加权仅对随机方向模式（倒T=3）生效，避免覆盖直线/锯齿/S线的固定水平逻辑
         double bias = state.weaponHorizontalBias / 100.0; // 0=全左, 0.5=均匀, 1=全右
-        // 把 dX 范围 [−H, +H] 偏置
-        if (bias != 0.5) {
+        if (bias != 0.5 && state.weaponPattern == 3) {
             double rand = rng.nextDouble();
             // power transform: bias<0.5→左偏, bias>0.5→右偏
             double power = 1.0 + Math.abs(bias - 0.5) * 4.0;
             double t = (bias > 0.5) ? Math.pow(rand, power) : (1.0 - Math.pow(1.0 - rand, power));
-            // t ∈ [0,1], 0=全左(-H), 1=全右(+H)
-            dX = horizontal * (t * 2.0 - 1.0);
+            // t ∈ [0,1], 0=全左(-2H), 1=全右(+2H)，保留倒T的水平加倍
+            dX = horizontal * 2.0 * (t * 2.0 - 1.0);
         }
 
         /* —— 状态修正 —— */

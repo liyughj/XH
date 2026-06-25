@@ -72,10 +72,11 @@ public final class MobilityManager {
     /** 完全移除玩家机动性状态（死亡/退出时调用），恢复默认移速 */
     static void remove(Player player) {
         UUID uid = player.getUniqueId();
-        originalWalkSpeed.remove(uid);
+        Float orig = originalWalkSpeed.remove(uid);
         heldWeapon.remove(uid);
         sprintBlocked.remove(uid);
-        player.setWalkSpeed(0.2f);
+        // 优先恢复保存的原移速，无记录时才用MC默认0.2
+        player.setWalkSpeed(orig != null ? orig : 0.2f);
     }
 
     /* ==================== 内部 ==================== */

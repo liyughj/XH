@@ -269,8 +269,10 @@ public class MagazineGUI implements Listener {
         String[] arr = getStackArray(item);
         if (bulletIndex >= arr.length) return;
         StringBuilder sb = new StringBuilder();
+        // arr 已反转：index 0=栈顶(先发射), index n=栈底(先装填)
+        // 从栈底到栈顶遍历构建 PDC 格式（左=底, 右=顶）
         for (int i = arr.length - 1; i >= 0; i--) {
-            if (i == arr.length - 1 - bulletIndex) continue;
+            if (i == bulletIndex) continue; // 跳过要删除的 GUI 位置
             if (sb.length() > 0) sb.append(',');
             sb.append(arr[i]);
         }

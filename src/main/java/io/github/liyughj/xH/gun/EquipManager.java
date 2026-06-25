@@ -80,4 +80,12 @@ public final class EquipManager {
         }
         return delayTicks - (int)(elapsed / 50);
     }
+
+    /** 完全移除玩家人体工学状态（死亡/退出时调用），避免重生后被旧冷却阻拦切枪 */
+    static void remove(Player player) {
+        UUID uid = player.getUniqueId();
+        equipBlockUntil.remove(uid);
+        holsterBlockUntil.remove(uid);
+        sprintEndTime.remove(uid);
+    }
 }

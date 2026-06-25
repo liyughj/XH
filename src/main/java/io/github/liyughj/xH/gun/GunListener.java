@@ -167,6 +167,12 @@ public class GunListener implements Listener {
         AdsManager.forceExit(player);
         AdsManager.remove(player);
         MobilityManager.remove(player);
+        EquipManager.remove(player);
+        SpecialWeapons.stopFlame(player);
+        SpecialWeapons.stopLaser(player);
+        SpreadManager.remove(player.getUniqueId());
+        RecoilManager.remove(player.getUniqueId());
+        SuppressionManager.remove(player);
         io.github.liyughj.xH.specialEvent.HeatSystem.remove(player);
         MalfunctionManager.remove(player);
     }
@@ -185,6 +191,12 @@ public class GunListener implements Listener {
         AdsManager.forceExit(player);
         AdsManager.remove(player);
         MobilityManager.remove(player);
+        EquipManager.remove(player);
+        SpecialWeapons.stopFlame(player);
+        SpecialWeapons.stopLaser(player);
+        SpreadManager.remove(player.getUniqueId());
+        RecoilManager.remove(player.getUniqueId());
+        SuppressionManager.remove(player);
         io.github.liyughj.xH.specialEvent.HeatSystem.remove(player);
         MalfunctionManager.remove(player);
     }
@@ -389,7 +401,18 @@ public class GunListener implements Listener {
             MalfunctionManager.MalfuncType malfunc = MalfunctionManager.checkAndTrigger(player, weapon);
             if (malfunc == MalfunctionManager.MalfuncType.JAM) return false;
             if (malfunc == MalfunctionManager.MalfuncType.MISFIRE) return false;
-            // 炸膛：正常发射
+            // 炸膛：子弹在膛内爆炸，消耗弹药但不发射弹丸（玩家受伤/耐久损失已在 MalfunctionManager 中处理）
+            if (malfunc == MalfunctionManager.MalfuncType.CATASTROPHIC) {
+                if (GunSystemConfig.isSystemEnabled(player, "magazine")) {
+                    if (ChamberManager.isEnabled(weapon)) {
+                        ChamberManager.consumeChamber(player, weapon);
+                    } else {
+                        MagazineManager.consumeAmmo(player, weapon);
+                    }
+                    LoreManager.refreshGunLore(weapon);
+                }
+                return false;
+            }
         }
 
         /* ── 4. [耐久] 先检查再消耗弹药，避免子弹浪费 ── */

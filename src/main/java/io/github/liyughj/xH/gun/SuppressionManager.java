@@ -120,4 +120,9 @@ public final class SuppressionManager {
             return entry.getValue().remainingTicks <= 0;
         });
     }
+
+    /** 完全移除玩家压制状态（死亡/退出时调用），避免离线玩家状态残留 */
+    static void remove(Player player) {
+        suppressed.remove(player.getUniqueId());
+    }
 }

@@ -157,7 +157,7 @@ public class MagazineManager {
         return null;
     }
 
-    /** 向弹夹栈底压入 count 发指定弹种 */
+    /** 向弹夹栈顶压入 count 发指定弹种（后压入的先发射，LIFO） */
     public static void pushAmmoToStack(ItemStack weapon, String ammoType, int count) {
         if (ammoType == null || count <= 0) return;
         StringBuilder sb = new StringBuilder();
@@ -198,6 +198,25 @@ public class MagazineManager {
         }
         setStackPDC(weapon, remaining);
         return popped;
+    }
+
+    /**
+     * 截断弹夹栈至指定数量，保留栈顶（后装入=先发射）的 count 发。
+     * 用于弹夹交换时原弹夹弹药数 > 武器容量的防御性处理。
+     * 栈格式：左=底(先装填), 右=顶(后装填=先发射)
+     */
+    private static String trimStackToCount(String stackData, int count) {
+        if (stackData == null || stackData.isEmpty() || count <= 0) return null;
+        String[] parts = stackData.split(",");
+        if (parts.length <= count) return stackData;
+        // 保留末尾（栈顶）count 个
+        StringBuilder sb = new StringBuilder();
+        int start = parts.length - count;
+        for (int i = start; i < parts.length; i++) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append(parts[i].trim());
+        }
+        return sb.toString();
     }
 
     private static String getStackPDC(ItemStack item) {
@@ -422,8 +441,9 @@ public class MagazineManager {
         clearAmmoStack(weapon);
         if (loadedAmmoType != null && fillCount > 0) {
             if (magazineStackData != null && !magazineStackData.isEmpty()) {
-                // 弹夹交换：直接复制弹夹栈（保留混装弹种顺序）
-                setStackPDC(weapon, magazineStackData);
+                // 弹夹交换：复制弹夹栈并截断至 fillCount（避免原弹夹弹药数 > 武器容量时 stack/ammo 不同步）
+                String trimmedStack = trimStackToCount(magazineStackData, fillCount);
+                setStackPDC(weapon, trimmedStack);
             } else {
                 // 散装弹药：压入统一弹种
                 pushAmmoToStack(weapon, loadedAmmoType, fillCount);

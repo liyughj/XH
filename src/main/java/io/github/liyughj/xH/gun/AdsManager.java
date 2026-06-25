@@ -63,6 +63,11 @@ public final class AdsManager {
          int adsOutTicks;
          double adsMoveSpeed;       // 开镜移速乘数（100=正常）
 
+        // 渐出过渡（exit 不立即清理，先过渡移速）
+         boolean exiting;            // 是否正在渐出
+         int exitTimer;              // 渐出已用 tick
+         float exitStartSpeed;       // 渐出开始时的移速（插值起点）
+
         /** 渐入完成度 [0,1]，1=完全进入 */
         float transitionProgress() {
             if (adsInTicks <= 0) return 1f;
@@ -87,24 +92,32 @@ public final class AdsManager {
     static boolean toggle(Player player, ItemStack weapon) {
         AdsState state = getOrCreate(player.getUniqueId());
         if (state.active) {
-            exit(player, state);
-            return false;
-        } else {
-            enter(player, weapon, state);
-            return true;
+            // 渐出中再次右键：取消渐出，直接重新开镜（不中断移速连续性）
+            if (state.exiting) {
+                state.exiting = false;
+                state.exitTimer = 0;
+                // 不 return，继续走 enter 分支重新开镜
+            } else {
+                exit(player, state);
+                return false;
+            }
         }
+        enter(player, weapon, state);
+        return true;
     }
 
     static void forceExit(Player player) {
         AdsState state = stateMap.get(player.getUniqueId());
         if (state != null && state.active) {
-            exit(player, state);
+            // 强制立即完成（不等渐出），用于死亡/切枪等场景
+            finishExit(player, state);
         }
     }
 
     public static boolean isActive(Player player) {
         AdsState s = stateMap.get(player.getUniqueId());
-        return s != null && s.active;
+        // exiting 期间不再视为开镜（不享受开镜加成），仅保留移速过渡
+        return s != null && s.active && !s.exiting;
     }
 
     static double getMagnification(Player player) {
@@ -131,6 +144,19 @@ public final class AdsManager {
     static void tick(Player player) {
         AdsState s = stateMap.get(player.getUniqueId());
         if (s == null) return;
+
+        // 渐出过渡：从 exitStartSpeed 线性插值回 walkSpeed
+        if (s.exiting) {
+            s.exitTimer++;
+            float progress = s.adsOutTicks <= 0 ? 1f
+                : Math.min(1f, (float) s.exitTimer / s.adsOutTicks);
+            float interp = s.exitStartSpeed + (s.walkSpeed - s.exitStartSpeed) * progress;
+            player.setWalkSpeed((float) Math.max(0.02f, interp));
+            if (s.exitTimer >= s.adsOutTicks) {
+                finishExit(player, s);
+            }
+            return; // 渐出期间不处理渐入/呼吸
+        }
 
         // 渐入渐出计时
          if (s.active) {
@@ -169,7 +195,7 @@ public final class AdsManager {
 
     static void thermalGlowTick(Player player) {
         AdsState s = stateMap.get(player.getUniqueId());
-        if (s == null || !s.active) return;
+        if (s == null || !s.active || s.exiting) return;
 
         ItemStack weapon = player.getInventory().getItemInMainHand();
         if (!GunListener.isGunStatic(weapon)) return;
@@ -227,10 +253,16 @@ public final class AdsManager {
         state.adsInTicks = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ADS_IN_TIME_TICKS);
         state.adsOutTicks = (int) AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ADS_OUT_TIME_TICKS);
         state.transitionTimer = 0;
+        boolean wasExiting = state.exiting;   // 记录进入前是否在渐出
+        state.exiting = false;                // 重置渐出标记
+        state.exitTimer = 0;
         state.adsMoveSpeed = AttributeStorage.getAttrValue(weapon, RpgAttribute.GUN_ADS_MOVE_SPEED) / 100.0;
 
         // 渐入基准速度：当前 MobilityManager 设置的移速（用于退出时恢复）
-        state.walkSpeed = player.getWalkSpeed();
+        // 注意：渐出中重开镜时保留原 walkSpeed 基准，避免用渐出中间移速覆盖导致退出恢复错误
+        if (!wasExiting) {
+            state.walkSpeed = player.getWalkSpeed();
+        }
 
         player.addPotionEffect(new PotionEffect(
             PotionEffectType.SLOWNESS, PotionEffect.INFINITE_DURATION,
@@ -244,7 +276,28 @@ public final class AdsManager {
     }
 
     private static void exit(Player player, AdsState state) {
+        // 若 adsOutTicks<=0，直接清理无渐出
+        if (state.adsOutTicks <= 0) {
+            finishExit(player, state);
+            return;
+        }
+        // 启动渐出：保留 active=true 标记 exiting，由 tick() 过渡移速后调用 finishExit
+        state.exiting = true;
+        state.exitTimer = 0;
+        state.exitStartSpeed = player.getWalkSpeed();
+        // 立即停止屏息/热成像（不再享受开镜效果），但保留移速过渡 + 缓后清除 potion
+        state.breathHolding = false;
+        for (LivingEntity e : state.thermalTargets) {
+            if (e.isValid()) e.removePotionEffect(PotionEffectType.GLOWING);
+        }
+        state.thermalTargets.clear();
+        state.magnification = 1.0;
+    }
+
+    /** 真正完成关镜：清除所有状态、potion、移速恢复 */
+    private static void finishExit(Player player, AdsState state) {
         state.active = false;
+        state.exiting = false;
         state.magnification = 1.0;
         state.breathHolding = false;
 

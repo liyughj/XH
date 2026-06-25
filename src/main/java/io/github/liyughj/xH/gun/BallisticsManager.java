@@ -54,6 +54,8 @@ public class BallisticsManager {
         public void consumeRicochet() { ricochetCount--; }
         public boolean isGlassPierce() { return glassPierce; }
         public double getRicochetChance() { return ricochetChance; }
+        /** 跳弹后更新当前速度向量 */
+        public void setVelocity(Vector v) { this.velocity = v; }
     }
 
     /**
@@ -266,6 +268,11 @@ public class BallisticsManager {
     /** 获取子弹元数据 */
     public static BulletMeta getBulletMeta(UUID arrowUuid) {
         return activeBullets.get(arrowUuid);
+    }
+
+    /** 注册子弹元数据（跳弹时由新 Arrow 继承使用） */
+    public static void registerBullet(UUID arrowUuid, BulletMeta meta) {
+        activeBullets.put(arrowUuid, meta);
     }
 
     /** 移除子弹元数据 */
