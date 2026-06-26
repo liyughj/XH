@@ -8,7 +8,7 @@ import io.github.liyughj.xH.enchantmentLevel.EnchantmentLevelDisplay;
 import io.github.liyughj.xH.enchantmentLevel.SpecialEffects;
 import io.github.liyughj.xH.gun.AmmoConfig;
 import io.github.liyughj.xH.gun.GunSystemConfig;
-import io.github.liyughj.xH.gun.GUI.GunWorkbenchGui;
+import io.github.liyughj.xH.make.WorkbenchGui;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -26,14 +26,14 @@ import java.util.List;
 public class XHCommand implements CommandExecutor, TabCompleter {
 
     private final XH plugin;
-    private GunWorkbenchGui workbenchGui;
+    private WorkbenchGui workbenchGui;
 
     public XHCommand(XH plugin) {
         this.plugin = plugin;
     }
 
     /** 注册工作台GUI实例，用于 /xh bench 命令 */
-    public void setWorkbenchGui(GunWorkbenchGui gui) {
+    public void setWorkbenchGui(WorkbenchGui gui) {
         this.workbenchGui = gui;
     }
 
@@ -87,7 +87,7 @@ public class XHCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2 && args[0].equalsIgnoreCase("give")) {
             // 二级：gun / ammo / mag
             String prefix = args[1].toLowerCase();
-            for (String t : new String[]{"gun", "ammo", "mag"}) {
+            for (String t : new String[]{"ammo", "blueprint", "gun", "mag"}) {
                 if (t.startsWith(prefix)) completions.add(t);
             }
             return completions;
@@ -113,6 +113,14 @@ public class XHCommand implements CommandExecutor, TabCompleter {
                 case "mag":
                     for (String id : GunSystemConfig.gun().getAllMagazineIds()) {
                         if (id.startsWith(prefix)) completions.add(id);
+                    }
+                    break;
+                case "blueprint":
+                    if (workbenchGui != null) {
+                        for (io.github.liyughj.xH.make.BlueprintConfig.BlueprintDef def
+                            : workbenchGui.getBlueprintFactory().getConfig().getAll()) {
+                            if (def.id.startsWith(prefix)) completions.add(def.id);
+                        }
                     }
                     break;
             }
@@ -170,6 +178,9 @@ public class XHCommand implements CommandExecutor, TabCompleter {
             case "mag":
                 if (args.length < 3) { sender.sendMessage("§e用法: /xh give mag <ID>"); return true; }
                 return handleGiveMag(player, args[2].toLowerCase());
+            case "blueprint":
+                if (args.length < 3) { sender.sendMessage("§e用法: /xh give blueprint <ID>"); return true; }
+                return handleGiveBlueprint(player, args[2].toLowerCase());
             default:
                 sender.sendMessage("§c类型错误: " + type + "，应为 gun/ammo/mag");
                 return true;
@@ -218,6 +229,21 @@ public class XHCommand implements CommandExecutor, TabCompleter {
         }
         player.getInventory().addItem(item);
         player.sendMessage("§a已给予弹匣: §e" + magId);
+        return true;
+    }
+
+    private boolean handleGiveBlueprint(Player player, String blueprintId) {
+        if (workbenchGui == null) {
+            player.sendMessage("§c工作台系统未初始化");
+            return true;
+        }
+        ItemStack item = workbenchGui.getBlueprintFactory().createBlueprint(blueprintId);
+        if (item == null) {
+            player.sendMessage("§c未知图纸ID: " + blueprintId);
+            return true;
+        }
+        player.getInventory().addItem(item);
+        player.sendMessage("§a已给予图纸: §e" + blueprintId);
         return true;
     }
 
@@ -293,8 +319,11 @@ public class XHCommand implements CommandExecutor, TabCompleter {
             AmmoConfig ammo = GunSystemConfig.ammo();
             if (ammo != null) ammo.reload();
 
-            /* 重载工作台配方 */
-            if (workbenchGui != null) workbenchGui.getConfig().reload();
+            /* 重载工作台配方和图纸 */
+            if (workbenchGui != null) {
+                workbenchGui.getRecipeConfig().reload();
+                workbenchGui.getBlueprintFactory().getConfig().reload();
+            }
 
             sender.sendMessage("§aXH 插件配置重载完成！");
             plugin.getLogger().info("配置已通过命令重载 - 操作者: " + sender.getName());
@@ -338,6 +367,7 @@ public class XHCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§e/xh give gun <ID> §7- 获取枪械");
         sender.sendMessage("§e/xh give ammo <口径> <弹种> [数量] §7- 获取弹药");
         sender.sendMessage("§e/xh give mag <ID> §7- 获取弹匣");
+        sender.sendMessage("§e/xh give blueprint <ID> §7- 获取图纸");
         sender.sendMessage("§e/xh bench §7- 打开枪械工作台");
         sender.sendMessage("§e/xh reload §7- 重载插件配置");
         sender.sendMessage("§e/xh debug §7- 切换调试模式（显示枪械属性/附魔/RPG效果）");

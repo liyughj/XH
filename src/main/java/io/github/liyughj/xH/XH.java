@@ -147,7 +147,13 @@ public final class XH extends JavaPlugin {
         io.github.liyughj.xH.gun.AmmoConfig ammoConfig = new io.github.liyughj.xH.gun.AmmoConfig(this);
 
         /* 初始化枪械工作台配方配置（guns/gun-recipes.yml） */
-        io.github.liyughj.xH.gun.GunWorkbenchConfig workbenchConfig = new io.github.liyughj.xH.gun.GunWorkbenchConfig(this);
+        io.github.liyughj.xH.make.WorkbenchRecipeConfig workbenchRecipeConfig = new io.github.liyughj.xH.make.WorkbenchRecipeConfig(this);
+
+        /* 初始化图纸配置（blueprints.yml） */
+        io.github.liyughj.xH.make.BlueprintConfig blueprintConfig = new io.github.liyughj.xH.make.BlueprintConfig(this);
+
+        /* 初始化图纸物品工厂 */
+        io.github.liyughj.xH.make.BlueprintItemFactory blueprintFactory = new io.github.liyughj.xH.make.BlueprintItemFactory(blueprintConfig);
 
         /* 初始化全局系统配置 */
         io.github.liyughj.xH.gun.GunSystemConfig.init(gunItemConfig, ammoConfig);
@@ -174,7 +180,7 @@ public final class XH extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new io.github.liyughj.xH.gun.GUI.MagazineGUI(), this);
 
         /* 注册枪械工作台GUI监听器 */
-        io.github.liyughj.xH.gun.GUI.GunWorkbenchGui workbenchGui = new io.github.liyughj.xH.gun.GUI.GunWorkbenchGui(workbenchConfig);
+        io.github.liyughj.xH.make.WorkbenchGui workbenchGui = new io.github.liyughj.xH.make.WorkbenchGui(workbenchRecipeConfig, blueprintFactory);
         getServer().getPluginManager().registerEvents(workbenchGui, this);
 
         /* 启动枪械定时任务（每秒恢复扩散） */
